@@ -1,0 +1,9 @@
+# WSGI module for use with Apache mod_wsgi or gunicorn
+from mapproxy.wsgiapp import make_wsgi_app
+from os import environ, path
+
+config_file = path.join(
+    environ.get('MAPPROXY_CONFIG_DIR', '${MAPPROXY_HOME}/config'),
+    'mapproxy.yaml'
+)
+application = make_wsgi_app(config_file)
