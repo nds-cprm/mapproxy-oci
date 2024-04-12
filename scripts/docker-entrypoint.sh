@@ -2,8 +2,6 @@
 
 source ./venv/bin/activate
 
-echo $PATH
-
 # create config files if they do not exist yet
 if [[ -e "$MAPPROXY_CONFIG_DIR" && -w "$MAPPROXY_CONFIG_DIR" ]] ; then
     if [ ! -f "$MAPPROXY_CONFIG_DIR/mapproxy.yaml" ]; then
