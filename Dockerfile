@@ -68,7 +68,9 @@ COPY --from=BUILD ${MAPPROXY_HOME} .
 COPY scripts/ /
 
 RUN echo "source ${MAPPROXY_HOME}/venv/bin/activate" >> /etc/bash.bashrc && \
-    chmod 755 /docker-entrypoint.sh /start.sh
+    chmod 755 /docker-entrypoint.sh /start.sh && \
+    mkdir -p /var/lib/uwsgi && \
+    mv uwsgi.conf /var/lib/uwsgi
 
 VOLUME [ "${MAPPROXY_HOME}/config" ]
 
