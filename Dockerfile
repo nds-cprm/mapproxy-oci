@@ -1,11 +1,11 @@
-ARG DEBIAN_VERSION=bookworm
-ARG PYTHON_VERSION=3.10
+ARG DEBIAN_VERSION=trixie
+ARG PYTHON_VERSION=3.14
 
-ARG MAPPROXY_VERSION=2.0.2
+ARG MAPPROXY_VERSION=7.0.0
 ARG MAPPROXY_HOME=/var/lib/mapproxy
 
 
-FROM docker.io/library/python:${PYTHON_VERSION}-${DEBIAN_VERSION} AS BUILD
+FROM docker.io/library/python:${PYTHON_VERSION}-${DEBIAN_VERSION} AS build
 
 ARG MAPPROXY_HOME
 ARG MAPPROXY_VERSION
@@ -15,7 +15,7 @@ WORKDIR ${MAPPROXY_HOME}
 RUN apt-get update && \
     apt-get install --yes --no-install-recommends --no-install-suggests \
         build-essential libjpeg-dev zlib1g-dev gettext \
-        libfreetype6-dev libgeos-dev libxml2-dev libxslt-dev && \
+        libfreetype6-dev libgeos-dev libgdal-dev libxml2-dev libxslt-dev && \
     apt-get autoremove && \
     rm -rf /var/lib/apt/lists/*
 
@@ -24,14 +24,15 @@ SHELL ["/bin/bash", "-c"]
 RUN python -m venv --prompt mapproxy venv && \
     source venv/bin/activate && \
     pip install --no-cache-dir \
-        "Pillow==10.3.0" \
-        "pyproj==3.6.1" \
-        "PyYAML==6.0.1" \
-        "shapely==2.0.3" \
-        "lxml==5.2.1" \
-        "requests==2.31.0" && \
+        "Pillow==12.1.0" \
+        "pyproj==3.7.2" \
+        "PyYAML==6.0.3" \
+        "redis==7.1.0" \
+        "shapely==2.1.2" \
+        "lxml==6.0.2" \
+        "requests==2.32.5" && \
     if [ "${MAPPROXY_VERSION}" = '1.15.1' ]; then pip install six; fi && \
-    pip install --no-cache-dir --use-pep517 "uwsgi==2.0.24" && \
+    pip install --no-cache-dir --use-pep517 "uwsgi==2.0.31" && \
     pip install --no-cache-dir "MapProxy==${MAPPROXY_VERSION}"
 
 COPY src/ ./
@@ -51,7 +52,7 @@ RUN source venv/bin/activate && \
 ARG DEBIAN_VERSION
 ARG PYTHON_VERSION
 
-FROM docker.io/library/python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS RELEASE
+FROM docker.io/library/python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS release
 
 ARG MAPPROXY_HOME
 
@@ -59,22 +60,19 @@ WORKDIR ${MAPPROXY_HOME}
 
 RUN apt-get update && \
     apt-get install --yes --no-install-recommends --no-install-suggests \
-        libjpeg62-turbo zlib1g libfreetype6 libgeos-c1v5 \
+        libjpeg62-turbo zlib1g libfreetype6 libgeos-c1t64 libgdal36 \
         libxml2 libxslt1.1 tini && \
     apt-get autoremove && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=BUILD ${MAPPROXY_HOME} .
+COPY --from=build ${MAPPROXY_HOME} .
+
 COPY scripts/ /
 
 RUN echo "source ${MAPPROXY_HOME}/venv/bin/activate" >> /etc/bash.bashrc && \
     chmod 755 /docker-entrypoint.sh /start.sh && \
     mkdir -p /var/lib/uwsgi && \
     mv uwsgi.conf /var/lib/uwsgi
-
-VOLUME [ "${MAPPROXY_HOME}/config" ]
-
-# ENV MAPPROXY_CONFIG_DIR=${MAPPROXY_HOME}/config
 
 EXPOSE 8000
 
