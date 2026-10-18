@@ -16,7 +16,6 @@ RUN apt-get update && \
     apt-get install --yes --no-install-recommends --no-install-suggests \
         build-essential libjpeg-dev zlib1g-dev gettext \
         libfreetype6-dev libgeos-dev libgdal-dev libxml2-dev libxslt-dev && \
-    apt-get autoremove && \
     rm -rf /var/lib/apt/lists/*
 
 SHELL ["/bin/bash", "-c"]
@@ -60,7 +59,6 @@ RUN apt-get update && \
     apt-get install --yes --no-install-recommends --no-install-suggests \
         libjpeg62-turbo zlib1g libfreetype6 libgeos-c1t64 libgdal36 \
         libxml2 libxslt1.1 libnss-wrapper tini && \
-    apt-get autoremove && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build ${MAPPROXY_BASE_DIR} .
