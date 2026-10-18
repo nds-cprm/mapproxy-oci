@@ -47,6 +47,13 @@ RUN source venv/bin/activate && \
 FROM docker.io/library/python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS release
 
 ARG MAPPROXY_BASE_DIR
+ARG MAPPROXY_VERSION
+
+LABEL org.opencontainers.image.title="MapProxy" \
+      org.opencontainers.image.description="MapProxy ${MAPPROXY_VERSION} served by uWSGI" \
+      org.opencontainers.image.version="${MAPPROXY_VERSION}" \
+      org.opencontainers.image.source="https://github.com/nds-cprm/mapproxy-oci" \
+      org.opencontainers.image.url="https://mapproxy.org"
 
 WORKDIR ${MAPPROXY_BASE_DIR}
 
@@ -58,12 +65,12 @@ RUN apt-get update && \
 
 COPY --from=build ${MAPPROXY_BASE_DIR} .
 
-COPY scripts/ /
+COPY --chmod=755 scripts/ /
 
 RUN echo "source ${MAPPROXY_BASE_DIR}/venv/bin/activate" >> /etc/bash.bashrc && \
-    chmod 755 /docker-entrypoint.sh /start.sh && \
     mkdir -p /var/lib/uwsgi && \
-    mv uwsgi.conf /var/lib/uwsgi
+    mv uwsgi.conf /var/lib/uwsgi && \
+    ln -s ${MAPPROXY_BASE_DIR}/venv/bin/uwsgi /usr/local/bin/uwsgi
 
 # nss_wrapper: arbitrary UIDs (e.g. OpenShift) get a passwd entry from the
 # entrypoint. Set at image level so it also applies to "podman exec" processes.
@@ -80,6 +87,10 @@ ENV LD_PRELOAD=/usr/lib/libnss_wrapper.so \
     HOME=${MAPPROXY_BASE_DIR}/config
 
 EXPOSE 8000
+
+# uWSGI ping (uwsgi protocol), answered by a worker: fails if no worker is serving
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD [ "uwsgi", "--socket", "127.0.0.1:8000", "--nagios" ]
 
 ENTRYPOINT [ "tini", "--", "/docker-entrypoint.sh" ]
 
