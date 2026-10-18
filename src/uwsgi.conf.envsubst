@@ -3,8 +3,8 @@
 strict = true
 master = true
 enable-threads = true
-chdir = ${MAPPROXY_HOME}
-wsgi-file = ${MAPPROXY_HOME}/app.py
+chdir = ${MAPPROXY_BASE_DIR}
+wsgi-file = ${MAPPROXY_BASE_DIR}/app.py
 pidfile=/tmp/mapproxy.pid
 socket = 0.0.0.0:8000
 chmod-socket = 777
