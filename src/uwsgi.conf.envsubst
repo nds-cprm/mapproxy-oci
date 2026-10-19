@@ -24,17 +24,21 @@ harakiri = 60                        ; forcefully kill workers after 60 seconds
 auto-procname = true
 procname-prefix = (mapproxy) 
 
-max-requests = 1000                  ; Restart workers after this many requests
+max-requests = 5000                  ; Restart workers after this many requests
 max-worker-lifetime = 3600           ; Restart workers after this many seconds
-reload-on-rss = 2048                 ; Restart workers after this much resident memory
+reload-on-rss = 256                  ; Restart workers after this much resident memory (MB)
 worker-reload-mercy = 60 
 
-cheaper-algo = busyness              
-processes = 500                      ; Maximum number of workers allowed
-cheaper = 8                          ; Minimum number of workers allowed
-cheaper-initial = 16                 ; Workers created at startup
+# defaults sized for a container with 2 CPUs and 4 GB of memory:
+# 16 workers x 256 MB (reload-on-rss) + master (~140 MB) stays below 4 GB
+cheaper-algo = busyness
+processes = 16                       ; Maximum number of workers allowed
+cheaper = 2                          ; Minimum number of workers allowed
+cheaper-initial = 4                  ; Workers created at startup
 cheaper-overload = 1                 ; Length of a cycle in seconds
-cheaper-step = 16                    ; How many workers to spawn at a time
+cheaper-step = 2                     ; How many workers to spawn at a time
+memory-report = true                 ; Required by cheaper-rss-limit-soft
+cheaper-rss-limit-soft = 2684354560  ; Don't spawn workers if their total RSS exceeds 2.5 GB (bytes)
 
 cheaper-busyness-multiplier = 30     ; How many cycles to wait before killing workers
 cheaper-busyness-min = 20            ; Below this threshold, kill workers (if stable for multiplier cycles)
