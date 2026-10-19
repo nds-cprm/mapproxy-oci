@@ -2,51 +2,71 @@ name: Docker Image CI
 
 on:
   workflow_dispatch:
+    inputs:
+      mapproxy_version:
+        description: MapProxy version (also used as the image tag)
+        default: "7.0.0"
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  IMAGE: ndscprm/mapproxy
+  MAPPROXY_VERSION: ${{ inputs.mapproxy_version || '7.0.0' }}
+
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-        
-    - name: Build and push Docker images
-      # You may pin to the exact commit or the version.
-      # uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0
-      uses: docker/build-push-action@v5.3.0
-      with:
-        # Build's context is the set of files located in the specified PATH or URL
-        context: .
-        # Path to the Dockerfile
-        file: Dockerfile
-        # Always attempt to pull all referenced images
-        pull: true
-        # Push is a shorthand for --output=type=registry
-        push: true
-        # List of tags
-        tags: ndscprm/mapproxy:2.0.2
-        
-    - name: Analyze for critical and high CVEs
-      id: docker-scout-cves
-      # if: ${{ github.event_name != 'pull_request_target' }}
-      uses: docker/scout-action@v1
-      with:
-        command: cves
-        image: ndscprm/mapproxy:2.0.2 # ${{ steps.meta.outputs.tags }}
-        sarif-file: sarif.output.json
-        summary: true
-    
-    - name: Upload SARIF result
-      id: upload-sarif
-      # if: ${{ github.event_name != 'pull_request_target' }}
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: sarif.output.json
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: type=raw,value=${{ env.MAPPROXY_VERSION }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: MAPPROXY_VERSION=${{ env.MAPPROXY_VERSION }}
+          pull: true
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Analyze for critical and high CVEs
+        if: github.event_name != 'pull_request'
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ env.IMAGE }}:${{ env.MAPPROXY_VERSION }}
+          sarif-file: sarif.output.json
+          summary: true
+
+      - name: Upload SARIF result
+        if: always() && hashFiles('sarif.output.json') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif.output.json
