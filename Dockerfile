@@ -67,10 +67,9 @@ COPY --from=build ${MAPPROXY_BASE_DIR} .
 
 COPY --chmod=755 scripts/ /
 
-RUN echo "source ${MAPPROXY_BASE_DIR}/venv/bin/activate" >> /etc/bash.bashrc && \
+RUN echo "umask 002" >> /etc/bash.bashrc && \
     mkdir -p /var/lib/uwsgi && \
-    mv uwsgi.conf /var/lib/uwsgi && \
-    ln -s ${MAPPROXY_BASE_DIR}/venv/bin/uwsgi /usr/local/bin/uwsgi
+    mv uwsgi.conf /var/lib/uwsgi
 
 # nss_wrapper: arbitrary UIDs (e.g. OpenShift) get a passwd entry from the
 # entrypoint. Set at image level so it also applies to "podman exec" processes.
@@ -84,7 +83,11 @@ RUN ln -s "$(dpkg -L libnss-wrapper | grep '/libnss_wrapper\.so$')" /usr/lib/lib
 ENV LD_PRELOAD=/usr/lib/libnss_wrapper.so \
     NSS_WRAPPER_PASSWD=/var/lib/nss_wrapper/passwd \
     NSS_WRAPPER_GROUP=/var/lib/nss_wrapper/group \
-    HOME=${MAPPROXY_BASE_DIR}/config
+    HOME=${MAPPROXY_BASE_DIR}/config \
+    VIRTUAL_ENV=${MAPPROXY_BASE_DIR}/venv \
+    PATH=${MAPPROXY_BASE_DIR}/venv/bin:${PATH}
+
+USER 55000:0
 
 EXPOSE 8000
 
