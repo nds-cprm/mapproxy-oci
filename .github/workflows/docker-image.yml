@@ -6,7 +6,7 @@ on:
       mapproxy_version:
         description: MapProxy version (also used as the image tag)
         default: "7.0.0"
-  pull_request:
+  # pull_request:
 
 permissions:
   contents: read
