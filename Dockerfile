@@ -18,11 +18,11 @@ RUN apt-get update && \
         libfreetype6-dev libgeos-dev libgdal-dev libxml2-dev libxslt-dev && \
     rm -rf /var/lib/apt/lists/*
 
-SHELL ["/bin/bash", "-c"]
+RUN python -m venv --prompt mapproxy venv
 
-RUN python -m venv --prompt mapproxy venv && \
-    source venv/bin/activate && \
-    pip install --no-cache-dir \
+ENV PATH=${MAPPROXY_BASE_DIR}/venv/bin:${PATH}
+
+RUN pip install --no-cache-dir \
         "Pillow==12.1.0" \
         "pyproj==3.7.2" \
         "PyYAML==6.0.3" \
@@ -35,8 +35,7 @@ RUN python -m venv --prompt mapproxy venv && \
 
 COPY src/ ./
 
-RUN source venv/bin/activate && \
-    mkdir config && \
+RUN mkdir config && \
     envsubst '${MAPPROXY_BASE_DIR}' < uwsgi.conf.envsubst > uwsgi.conf && \
     envsubst '${MAPPROXY_BASE_DIR}' < app.py.envsubst > app.py && \
     rm -rf *.envsubst && \
