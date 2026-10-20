@@ -27,7 +27,11 @@ fi
 # create config files if they do not exist yet
 if [ ! -f "$HOME/mapproxy.yaml" ]; then
     echo "No mapproxy configuration found. Creating one from template."
-    mapproxy-util create -t base-config "$HOME"
+    if { [ -d "$HOME" ] && [ ! -w "$HOME" ]; } || ! mapproxy-util create -t base-config "$HOME"; then
+        echo "ERROR: no $HOME/mapproxy.yaml and could not create one (is $HOME read-only?)." >&2
+        echo "ERROR: provide a mapproxy.yaml or mount $HOME as a writable volume." >&2
+        exit 1
+    fi
     # templates are copied with their original mode (644), ignoring umask
     find "$HOME" -user "$(id -u)" -exec chmod g=u {} +
 fi
