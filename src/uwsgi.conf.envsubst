@@ -7,7 +7,6 @@ chdir = ${MAPPROXY_BASE_DIR}
 wsgi-file = ${MAPPROXY_BASE_DIR}/app.py
 socket = 0.0.0.0:8000
 
-vacuum = true
 single-interpreter = true
 die-on-term = true
 need-app = true
