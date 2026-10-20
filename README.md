@@ -273,6 +273,34 @@ docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
 
 As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt). O workflow [`docker-image.yml`](.github/workflows/docker-image.yml) constrói e publica as imagens `amd64` e `arm64` e analisa CVEs com o Docker Scout.
 
+## Segurança e atualizações
+
+- **Rebuild mensal:** o workflow reconstrói a imagem no dia 1 de cada mês, sem cache de camadas, e republica a mesma tag com as correções de segurança disponíveis nas imagens base e nos pacotes Debian e Python. Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
+- **Análise de vulnerabilidades:** cada build é analisado pelo Docker Scout, e o resultado aparece na aba *Security* do repositório.
+
+### Vulnerabilidades conhecidas e aceitas
+
+O `pip` 26.2.1, a versão mais recente, traz cópias embutidas (*vendored*) de algumas bibliotecas em versões com CVEs conhecidas. Ele está presente no venv e no Python do sistema:
+
+| Biblioteca embutida | Versão | CVEs altas |
+|---|---|---|
+| `urllib3` | 2.7.0 | 2 |
+| `msgpack` | 1.1.2 | 1 |
+| `setuptools` (`pkg_resources`) | 70.3.0 | 1 |
+
+**O risco foi aceito**, porque esse código só é executado quando alguém roda o `pip`. O MapProxy e o uWSGI não o usam: o `urllib3` usado pelo MapProxy é outra instalação, já na versão corrigida (2.8.0). Na prática, o risco se limita a quem executar `pip install` dentro do container, o que não faz parte do uso normal da imagem.
+
+Essa decisão será revista quando sair um `pip` com as dependências embutidas atualizadas. O `pip` vem da imagem base do Python, então ele é atualizado quando uma nova imagem `python:3.14` trouxer uma versão nova, o que o rebuild mensal incorpora. Se a sua política de segurança não aceitar esses achados, uma imagem derivada pode remover o `pip`:
+
+```dockerfile
+FROM ndscprm/mapproxy:7.0.0
+USER 0
+RUN /var/lib/mapproxy/venv/bin/python -m pip uninstall -y pip && \
+    /usr/local/bin/python3 -m pip uninstall -y pip && \
+    rm -rf /usr/local/lib/python3*/ensurepip
+USER 55000:0
+```
+
 ## Licença
 
 [Apache License 2.0](LICENSE). Veja [`NOTICE`](NOTICE) para autoria e avisos.
