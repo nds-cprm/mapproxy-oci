@@ -5,6 +5,11 @@ umask 002
 
 # nss_wrapper (see Dockerfile): add a passwd entry for arbitrary UIDs
 if ! getent passwd "$(id -u)" > /dev/null 2>&1; then
+    # read-only root filesystem: use a writable copy in /tmp for this process tree
+    if { [ ! -w "$NSS_WRAPPER_PASSWD" ] || [ ! -w "$NSS_WRAPPER_GROUP" ]; } && nss_dir=$(mktemp -d 2> /dev/null); then
+        cp "$NSS_WRAPPER_PASSWD" "$nss_dir/passwd" && cp "$NSS_WRAPPER_GROUP" "$nss_dir/group" && \
+            export NSS_WRAPPER_PASSWD="$nss_dir/passwd" NSS_WRAPPER_GROUP="$nss_dir/group"
+    fi
     if [ -w "$NSS_WRAPPER_PASSWD" ] && [ -w "$NSS_WRAPPER_GROUP" ]; then
         echo "mapproxy:x:$(id -u):$(id -g):MapProxy:${HOME}:/bin/bash" >> "$NSS_WRAPPER_PASSWD"
         if ! getent group "$(id -g)" > /dev/null 2>&1; then
