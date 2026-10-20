@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       mapproxy_version:
-        description: MapProxy version (also used as the image tag)
-        default: "7.0.0"
+        description: MapProxy version (also used as the image tag). Empty = ARG MAPPROXY_VERSION in the Dockerfile
+        required: false
+        default: ""
   # monthly rebuild (03:00 UTC on day 1), to pick up security fixes of the
   # base images and of the Debian and Python packages
   schedule:
@@ -18,7 +19,6 @@ permissions:
 
 env:
   IMAGE: ndscprm/mapproxy
-  MAPPROXY_VERSION: ${{ inputs.mapproxy_version || '7.0.0' }}
 
 jobs:
   build:
@@ -26,6 +26,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      # the Dockerfile (ARG MAPPROXY_VERSION) is the single source of the
+      # default version, also used by the scheduled rebuilds
+      - name: Resolve MapProxy version
+        env:
+          INPUT_VERSION: ${{ inputs.mapproxy_version }}
+        run: |
+          version="${INPUT_VERSION:-$(sed -nE 's/^ARG MAPPROXY_VERSION=(.+)$/\1/p' Dockerfile)}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::invalid MapProxy version: '$version'"
+            exit 1
+          fi
+          echo "MAPPROXY_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -45,7 +58,11 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
-          tags: type=raw,value=${{ env.MAPPROXY_VERSION }}
+          # <version>: moving tag, rebuilt every month with security fixes
+          # <version>-YYYYMMDD: immutable tag of each build, for pinning and rollback
+          tags: |
+            type=raw,value=${{ env.MAPPROXY_VERSION }}
+            type=raw,value=${{ env.MAPPROXY_VERSION }}-{{date 'YYYYMMDD'}}
           # overrides the default title (repository name); keep in sync with
           # the Dockerfile. description and url come from the repository
           labels: org.opencontainers.image.title=MapProxy

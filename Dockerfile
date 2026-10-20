@@ -1,6 +1,7 @@
 ARG DEBIAN_VERSION=trixie
 ARG PYTHON_VERSION=3.14
 
+# default MapProxy version, also read by the CI workflow (keep this format)
 ARG MAPPROXY_VERSION=7.0.0
 ARG MAPPROXY_BASE_DIR=/var/lib/mapproxy
 

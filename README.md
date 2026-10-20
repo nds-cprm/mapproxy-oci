@@ -9,7 +9,14 @@ Imagem de container OCI para o [MapProxy](https://mapproxy.org), servido pelo uW
 - Healthcheck que detecta workers travados
 - Imagens `linux/amd64` e `linux/arm64`
 
-Imagem publicada: [`ndscprm/mapproxy`](https://hub.docker.com/r/ndscprm/mapproxy), com a tag igual à versão do MapProxy.
+Imagem publicada: [`ndscprm/mapproxy`](https://hub.docker.com/r/ndscprm/mapproxy), com duas tags por build:
+
+| Tag | Exemplo | Comportamento |
+|---|---|---|
+| `<versão do MapProxy>` | `7.0.0` | **Móvel**: republicada todo mês com as correções de segurança. Recomendada para uso geral |
+| `<versão>-<AAAAMMDD>` | `7.0.0-20261101` | **Imutável**: cada build mantém a sua. Use para fixar uma imagem exata ou para voltar a uma versão anterior |
+
+A tag com data só muda se o workflow rodar duas vezes no mesmo dia (por exemplo, um disparo manual depois do rebuild agendado). Para garantir uma imagem exata, fixe também o digest (`ndscprm/mapproxy@sha256:…`).
 
 ## Início rápido
 
@@ -283,6 +290,17 @@ docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
 | `PYTHON_VERSION` | `3.14` |
 | `DEBIAN_VERSION` | `trixie` |
 | `MAPPROXY_BASE_DIR` | `/var/lib/mapproxy` |
+
+### Atualizando a versão do MapProxy
+
+A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). O workflow lê esse valor quando nenhuma versão é informada no disparo manual, e também no rebuild mensal. Para mudar de versão:
+
+1. Altere `ARG MAPPROXY_VERSION=` no `Dockerfile`, mantendo o formato `X.Y.Z`.
+2. Atualize a tag padrão no `docker-compose.yaml` e os exemplos deste README. Para achar todas as ocorrências: `grep -rn "7\.0\.0" --exclude-dir=.git .`
+3. Rode o build localmente e confira se as dependências do `requirements.txt` continuam compatíveis.
+4. Faça o commit e dispare o workflow, ou aguarde o rebuild mensal.
+
+Para publicar outra versão sem mudar o padrão, informe-a no campo `mapproxy_version` ao disparar o workflow manualmente.
 
 As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt). O workflow [`docker-image.yml`](.github/workflows/docker-image.yml) constrói e publica as imagens `amd64` e `arm64` e analisa CVEs com o Docker Scout.
 
