@@ -4,6 +4,9 @@
 globals:
   cache:
     base_dir: ${MAPPROXY_CACHE_DIR}
+  tiles:
+    # Cache-Control/Expires headers on tiles (browsers, CDNs, nginx cache)
+    expires_hours: 24
 
 services:
   wms:

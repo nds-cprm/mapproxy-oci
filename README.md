@@ -118,6 +118,20 @@ O que cada parte faz:
 - **Limites de recursos** batem com os padrões do uWSGI da imagem (2 CPUs, 4 GB; ver [Recursos](#recursos-e-uwsgi)).
 - **nginx** usa a imagem `nginx-unprivileged` (UID 101, porta 8080), também com rootfs somente leitura, e só recebe tráfego depois que o MapProxy fica saudável.
 
+O [`docker/nginx.conf`](docker/nginx.conf) também traz ajustes de desempenho:
+
+| Ajuste | Efeito medido no exemplo |
+|---|---|
+| Cache do nginx (`uwsgi_cache`) para `/wmts/` e `/tms/` | Tiles repetidos são servidos sem passar pelo uWSGI: de ~6.500 para ~18.700 req/s (16 conexões), latência p99 de 5 para 1 ms. O cabeçalho `X-Cache-Status` indica `HIT`/`MISS` |
+| `expires_hours: 24` no `docker/mapproxy.yaml` | Tiles saem com `Cache-Control: public, max-age=86400`, então navegadores e CDNs também fazem cache |
+| `gzip` para XML | `GetCapabilities` WMS de 2,5 KB para 0,8 KB; `WMTSCapabilities` de 10,6 KB para 1,6 KB |
+| Buffers maiores (`uwsgi_buffers 16 64k`) | Respostas de até ~1 MB ficam em memória, e o worker do uWSGI é liberado logo |
+| `limit_conn` (20 conexões simultâneas por IP, rejeição com 429) | Um único cliente não consegue ocupar todos os 16 workers |
+
+O cache do nginx fica no `/tmp` (tmpfs) do container, com no máximo 512 MB, e se perde ao recriar o container. O WMS (`/service`) não é cacheado no nginx, porque cada combinação de bbox e tamanho gera uma URL diferente.
+
+> **Atenção ao `limit_conn`:** o limite é por endereço IP. Usuários atrás de um mesmo NAT, ou um balanceador ou terminador TLS na frente do nginx, aparecem como um único IP e seriam bloqueados juntos. Nesses casos, aumente o limite ou configure o IP real do cliente (módulo `realip` do nginx).
+
 > A origem do exemplo (o WMS OpenStreetMap da [terrestris](https://ows.terrestris.de)) é só ilustrativa. Respeite os termos de uso dela, ou troque `UPSTREAM_WMS_URL` e a camada pela sua própria fonte de dados.
 
 Para testar o exemplo com uma imagem construída localmente: `MAPPROXY_IMAGE=mapproxy:local docker compose up -d`.
