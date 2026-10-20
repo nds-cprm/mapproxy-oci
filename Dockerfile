@@ -42,7 +42,8 @@ FROM docker.io/library/python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS releas
 ARG MAPPROXY_BASE_DIR
 ARG MAPPROXY_VERSION
 
-# description and url are set by the CI (docker/metadata-action)
+# description and url are set by the CI (docker/metadata-action); the title is
+# repeated there to override the default one, so keep both in sync
 LABEL org.opencontainers.image.title="MapProxy" \
       org.opencontainers.image.version="${MAPPROXY_VERSION}" \
       org.opencontainers.image.source="https://github.com/nds-cprm/mapproxy-oci" \

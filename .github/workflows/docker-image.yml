@@ -6,6 +6,10 @@ on:
       mapproxy_version:
         description: MapProxy version (also used as the image tag)
         default: "7.0.0"
+  # monthly rebuild (03:00 UTC on day 1), to pick up security fixes of the
+  # base images and of the Debian and Python packages
+  schedule:
+    - cron: "0 3 1 * *"
   # pull_request:
 
 permissions:
@@ -42,6 +46,9 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: type=raw,value=${{ env.MAPPROXY_VERSION }}
+          # overrides the default title (repository name); keep in sync with
+          # the Dockerfile. description and url come from the repository
+          labels: org.opencontainers.image.title=MapProxy
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
@@ -50,6 +57,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: MAPPROXY_VERSION=${{ env.MAPPROXY_VERSION }}
           pull: true
+          # scheduled rebuilds ignore the layer cache, so apt and pip fetch
+          # the current packages even when the base image did not change
+          no-cache: ${{ github.event_name == 'schedule' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
