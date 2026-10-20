@@ -5,7 +5,7 @@ from mapproxy.wsgiapp import make_wsgi_app
 from os import environ, path
 
 config_file = path.join(
-    environ.get('MAPPROXY_CONFIG_DIR', '${MAPPROXY_BASE_DIR}/config'),
+    environ.get('HOME') or '${MAPPROXY_BASE_DIR}/config',
     'mapproxy.yaml'
 )
 application = make_wsgi_app(config_file)

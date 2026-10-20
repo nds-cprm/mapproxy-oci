@@ -3,6 +3,10 @@
 # group-writable files, so other UIDs of group 0 (e.g. OpenShift) can edit them
 umask 002
 
+# HOME is the MapProxy configuration directory (see Dockerfile); fall back to
+# the default one if it is unset or empty
+export HOME="${HOME:-${VIRTUAL_ENV%/venv}/config}"
+
 # nss_wrapper (see Dockerfile): add a passwd entry for arbitrary UIDs
 if ! getent passwd "$(id -u)" > /dev/null 2>&1; then
     # read-only root filesystem: use a writable copy in /tmp for this process tree
