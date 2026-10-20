@@ -1,0 +1,60 @@
+name: mapproxy
+
+services:
+  # Prepares the cache volume for the image user (UID 55000, GID 0).
+  # Runs once and exits; mapproxy only starts after it succeeds.
+  cache-init:
+    image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
+    user: "0:0"
+    entrypoint: ["sh", "-c", "chown 55000:0 /cache && chmod 2775 /cache"]
+    volumes:
+      - cache:/cache
+    restart: "no"
+
+  mapproxy:
+    image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
+    depends_on:
+      cache-init:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      # read by mapproxy.yaml (${MAPPROXY_CACHE_DIR}, ${UPSTREAM_WMS_URL})
+      MAPPROXY_CACHE_DIR: /var/lib/mapproxy/cache
+      UPSTREAM_WMS_URL: https://ows.terrestris.de/osm/service?
+    volumes:
+      - ./docker/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
+      - ./docker/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
+      - cache:/var/lib/mapproxy/cache
+    healthcheck:
+      test: ["CMD", "uwsgi", "--socket", "127.0.0.1:8000", "--nagios"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4g
+    restart: unless-stopped
+
+  # The image speaks the uwsgi protocol on port 8000; nginx exposes it as HTTP.
+  # Unprivileged image: runs as UID 101 and listens on 8080.
+  nginx:
+    image: docker.io/nginxinc/nginx-unprivileged:1.27-alpine
+    depends_on:
+      mapproxy:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+
+volumes:
+  cache:

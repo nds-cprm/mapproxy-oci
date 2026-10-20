@@ -1,0 +1,36 @@
+# Example configuration. $VAR / ${VAR} are replaced by environment variables
+# (MapProxy has no default-value syntax: every variable used here must be set).
+
+globals:
+  cache:
+    base_dir: ${MAPPROXY_CACHE_DIR}
+
+services:
+  wms:
+    srs: ['EPSG:3857', 'EPSG:4326', 'EPSG:4674']
+    md:
+      title: MapProxy
+  wmts:
+  tms:
+    use_grid_names: true
+
+layers:
+  - name: osm
+    title: OpenStreetMap (terrestris)
+    sources: [osm_cache]
+
+caches:
+  osm_cache:
+    grids: [webmercator]
+    sources: [osm_wms]
+
+sources:
+  osm_wms:
+    type: wms
+    req:
+      url: ${UPSTREAM_WMS_URL}
+      layers: OSM-WMS
+
+grids:
+  webmercator:
+    base: GLOBAL_WEBMERCATOR
