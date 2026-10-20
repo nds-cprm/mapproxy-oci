@@ -1,0 +1,17 @@
+mapproxy-oci
+Copyright 2024-2026 Carlos Eduardo Miranda Mota and Serviço Geológico do Brasil/CPRM
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This software is provided "AS IS", without warranty of any kind, and without
+any commitment to maintenance, support or updates. See sections 7 and 8 of
+the License.
+
+Este software é fornecido "NO ESTADO EM QUE SE ENCONTRA", sem garantia de
+qualquer tipo e sem compromisso de manutenção, suporte ou atualização. Veja as
+seções 7 e 8 da Licença.
+
+This product packages MapProxy (https://mapproxy.org),
+Copyright Omniscale and contributors, licensed under the Apache License,
+Version 2.0. src/app.py.envsubst is based on the WSGI template distributed
+with MapProxy.

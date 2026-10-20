@@ -22,16 +22,10 @@ RUN python -m venv --prompt mapproxy venv
 
 ENV PATH=${MAPPROXY_BASE_DIR}/venv/bin:${PATH}
 
-RUN pip install --no-cache-dir \
-        "Pillow==12.1.0" \
-        "pyproj==3.7.2" \
-        "PyYAML==6.0.3" \
-        "redis==7.1.0" \
-        "shapely==2.1.2" \
-        "lxml==6.0.2" \
-        "requests==2.32.5" && \
-    pip install --no-cache-dir --use-pep517 "uwsgi==2.0.31" && \
-    pip install --no-cache-dir "MapProxy==${MAPPROXY_VERSION}"
+COPY requirements.txt /tmp/
+
+RUN pip install --no-cache-dir --use-pep517 -r /tmp/requirements.txt && \
+    pip install --no-cache-dir -c /tmp/requirements.txt "MapProxy==${MAPPROXY_VERSION}"
 
 COPY src/ ./
 
@@ -48,11 +42,11 @@ FROM docker.io/library/python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS releas
 ARG MAPPROXY_BASE_DIR
 ARG MAPPROXY_VERSION
 
+# description and url are set by the CI (docker/metadata-action)
 LABEL org.opencontainers.image.title="MapProxy" \
-      org.opencontainers.image.description="MapProxy ${MAPPROXY_VERSION} served by uWSGI" \
       org.opencontainers.image.version="${MAPPROXY_VERSION}" \
       org.opencontainers.image.source="https://github.com/nds-cprm/mapproxy-oci" \
-      org.opencontainers.image.url="https://mapproxy.org"
+      org.opencontainers.image.licenses="Apache-2.0"
 
 WORKDIR ${MAPPROXY_BASE_DIR}
 
@@ -65,6 +59,8 @@ RUN apt-get update && \
 COPY --from=build ${MAPPROXY_BASE_DIR} .
 
 COPY --chmod=755 scripts/ /
+
+COPY LICENSE NOTICE /usr/share/doc/mapproxy-oci/
 
 RUN echo "umask 002" >> /etc/bash.bashrc && \
     mkdir -p /var/lib/uwsgi && \

@@ -1,4 +1,6 @@
 # WSGI module for use with Apache mod_wsgi or gunicorn
+# Based on the WSGI template distributed with MapProxy
+# (Copyright Omniscale, Apache License 2.0). See NOTICE.
 from mapproxy.wsgiapp import make_wsgi_app
 from os import environ, path
 
