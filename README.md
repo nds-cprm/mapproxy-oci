@@ -37,6 +37,15 @@ Os arquivos em `docker/` são montados nos containers.
 ```yaml
 name: mapproxy
 
+# Logs go to stdout/stderr and are stored by the container runtime; without
+# limits the json-file driver grows forever. With Docker, a host-wide default in
+# /etc/docker/daemon.json (e.g. "log-driver": "local") is an alternative.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   # Prepares the cache volume for the image user (UID 55000, GID 0).
   # Runs once and exits; mapproxy only starts after it succeeds.
@@ -47,6 +56,7 @@ services:
     volumes:
       - cache:/cache
     restart: "no"
+    logging: *logging
 
   mapproxy:
     image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
@@ -76,6 +86,7 @@ services:
           cpus: "2"
           memory: 4g
     restart: unless-stopped
+    logging: *logging
 
   # The image speaks the uwsgi protocol on port 8000; nginx exposes it as HTTP.
   # Unprivileged image: runs as UID 101 and listens on 8080.
@@ -92,6 +103,7 @@ services:
     volumes:
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
+    logging: *logging
 
 volumes:
   cache:
@@ -116,6 +128,7 @@ O que cada parte faz:
 - **`docker/mapproxy.yaml` montado somente leitura** substitui a configuração de exemplo. Como ele existe, o entrypoint não gera nada.
 - **Variáveis de ambiente** definem o diretório do cache e a URL da origem, sem editar o YAML (ver [Variáveis no `mapproxy.yaml`](#variáveis-no-mapproxyyaml)).
 - **Limites de recursos** batem com os padrões do uWSGI da imagem (2 CPUs, 4 GB; ver [Recursos](#recursos-e-uwsgi)).
+- **Logs**: todos os serviços escrevem em stdout/stderr, e o runtime guarda essa saída. O bloco `x-logging` limita cada serviço a 3 arquivos de 10 MB (`json-file`, aceito pelo Docker e pelo Podman). No Docker, também dá para definir isso para o host inteiro em `/etc/docker/daemon.json`, por exemplo com `"log-driver": "local"`, que já faz rotação e compressão (o Podman não aceita esse driver). No Kubernetes, o kubelet já faz a rotação.
 - **nginx** usa a imagem `nginx-unprivileged` (UID 101, porta 8080), também com rootfs somente leitura, e só recebe tráfego depois que o MapProxy fica saudável.
 
 O [`docker/nginx.conf`](docker/nginx.conf) também traz ajustes de desempenho:
