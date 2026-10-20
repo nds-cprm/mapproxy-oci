@@ -43,7 +43,7 @@ services:
   # The image speaks the uwsgi protocol on port 8000; nginx exposes it as HTTP.
   # Unprivileged image: runs as UID 101 and listens on 8080.
   nginx:
-    image: docker.io/nginxinc/nginx-unprivileged:1.27-alpine
+    image: docker.io/nginxinc/nginx-unprivileged:1.30-alpine
     depends_on:
       mapproxy:
         condition: service_healthy
