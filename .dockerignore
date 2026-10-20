@@ -1,0 +1,7 @@
+# Allowlist: only what the Dockerfile copies goes into the build context
+*
+!requirements.txt
+!src
+!scripts
+!LICENSE
+!NOTICE
