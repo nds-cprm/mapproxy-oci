@@ -34,6 +34,11 @@ if [ ! -f "$HOME/mapproxy.yaml" ]; then
     fi
     # templates are copied with their original mode (644), ignoring umask
     find "$HOME" -user "$(id -u)" -exec chmod g=u {} +
+    # the base config uses ${server} and $layer as examples, which MapProxy
+    # reads as environment variables (hence the "is not set" warnings)
+    echo "NOTE: this base configuration is meant for testing only. Its \${server} and \$layer"
+    echo "NOTE: placeholders are read as environment variables; unset ones trigger UserWarnings."
+    echo "NOTE: in production, provide your own $HOME/mapproxy.yaml (volume or ConfigMap)."
 fi
 
 exec "$@"
