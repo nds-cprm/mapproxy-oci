@@ -1,7 +1,7 @@
 # Python dependencies of the image (MapProxy itself is installed by the
 # Dockerfile, using the MAPPROXY_VERSION build arg).
 # Also used as a constraints file when installing MapProxy.
-Pillow==12.3.0
+Pillow==13.0.0
 pyproj==3.7.2
 PyYAML==6.0.3
 redis==7.1.0
