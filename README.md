@@ -2,8 +2,8 @@
 
 Imagem de container OCI para o [MapProxy](https://mapproxy.org), servido pelo uWSGI.
 
-- MapProxy 7 sobre Python 3.14 e Debian trixie (`python:3.14-slim-trixie`)
-- Roda como usuário não-root (`55000:0`) e aceita UID arbitrário (OpenShift)
+- MapProxy 7 sobre Python 3.12, GDAL 3.12 e Debian trixie (imagem base [`ndscprm/gdal`](https://hub.docker.com/r/ndscprm/gdal): `3.12.4-py3.12`, e `3.12.4-py3.12-devel` no estágio de build)
+- Roda como usuário não-root (`1000:0`) e aceita UID arbitrário (OpenShift)
 - Funciona com sistema de arquivos raiz somente leitura
 - Configuração por `mapproxy.yaml`, variáveis de ambiente e volumes
 - Healthcheck que detecta workers travados
@@ -54,12 +54,12 @@ x-logging: &logging
     max-file: "3"
 
 services:
-  # Prepares the cache volume for the image user (UID 55000, GID 0).
+  # Prepares the cache volume for the image user (UID 1000, GID 0).
   # Runs once and exits; mapproxy only starts after it succeeds.
   cache-init:
     image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
     user: "0:0"
-    entrypoint: ["sh", "-c", "chown 55000:0 /cache && chmod 2775 /cache"]
+    entrypoint: ["sh", "-c", "chown 1000:0 /cache && chmod 2775 /cache"]
     volumes:
       - cache:/cache
     restart: "no"
@@ -192,12 +192,14 @@ O `mapproxy-seed` roda dentro do container `mapproxy`, com as mesmas variáveis 
 
 O MapProxy lê `$HOME/mapproxy.yaml`. Na imagem, `HOME=/var/lib/mapproxy/config`. Se você mudar `HOME`, muda também o lugar onde a configuração é lida e gerada.
 
-Na inicialização, o entrypoint:
+Na inicialização, o entrypoint da imagem base (`/docker-entrypoint.sh`) carrega os scripts de `/docker-entrypoint.d` em ordem e depois executa o uWSGI. O [`20-mapproxy.sh`](docker-entrypoint.d/20-mapproxy.sh), deste projeto:
 - usa `$HOME/mapproxy.yaml`, se existir;
 - se não existir, gera a configuração de exemplo em `$HOME` e imprime um aviso de que ela é só para testes;
 - se não existir e `$HOME` não for gravável, encerra com uma mensagem de erro explicando o problema.
 
 Em produção, forneça seu próprio `mapproxy.yaml`, montando o arquivo ou o diretório por volume, bind mount ou ConfigMap.
+
+Para rodar outras tarefas na inicialização, monte scripts `.sh` adicionais em `/docker-entrypoint.d`. Os executáveis rodam num processo à parte; os não executáveis são carregados com `source` pelo `sh`, e as variáveis que eles exportam chegam ao uWSGI. Um script que falha impede o container de iniciar.
 
 ### Variáveis no `mapproxy.yaml`
 
@@ -223,8 +225,9 @@ A página `/demo/` existe só se o `mapproxy.yaml` tiver `demo:` em `services`. 
 
 ## Usuário e permissões
 
-- A imagem roda como `55000:0`.
-- **UID arbitrário** (OpenShift, `--user`) é suportado: o entrypoint registra o usuário via nss_wrapper, então `whoami` e as consultas de nome funcionam. O GID deve ser `0`.
+- A imagem roda como `1000:0`.
+- **UID arbitrário** (OpenShift, `--user`) é suportado. O GID deve ser `0`.
+- Quando a UID não existe no `/etc/passwd`, o script `10-enable-nss-wrapper.sh` da imagem base a registra via nss_wrapper com o nome `mapproxy` (variável `USER_NAME`), e `whoami` e as consultas de nome funcionam no uWSGI. O registro vale só para os processos iniciados pelo entrypoint; num `docker exec`, o usuário aparece sem nome. O Podman já acrescenta a UID ao `/etc/passwd` do container, e nesse caso o nss_wrapper não é necessário.
 - **Volumes graváveis** (configuração, cache) precisam permitir escrita ao UID do container ou ao grupo `0`:
   - Kubernetes: `securityContext.fsGroup`;
   - Docker/Podman: prepare o volume, como faz o serviço `cache-init` do exemplo.
@@ -232,9 +235,9 @@ A página `/demo/` existe só se o `mapproxy.yaml` tiver `demo:` em `services`. 
 
 ### Sistema de arquivos raiz somente leitura
 
-Suportado (`read_only: true`, `--read-only`, `readOnlyRootFilesystem: true`). Recomenda-se montar `/tmp` como gravável (`tmpfs` ou `emptyDir`):
-- sem ele, o servidor funciona, mas o processo fica sem nome de usuário (há um aviso no log);
-- requisições POST com corpo acima de 64 KB também precisam do `/tmp`.
+Suportado (`read_only: true`, `--read-only`, `readOnlyRootFilesystem: true`), desde que `/tmp` seja gravável (`tmpfs` ou `emptyDir`):
+- o nss_wrapper grava o registro do usuário no `/tmp`. Sem ele, o container não inicia quando a UID não existe no `/etc/passwd` (Docker, Kubernetes, OpenShift);
+- requisições POST com corpo acima de 64 KB também usam o `/tmp`.
 
 ## Rede
 
@@ -287,8 +290,8 @@ docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
 | Build arg | Padrão |
 |---|---|
 | `MAPPROXY_VERSION` | `7.0.0` |
-| `PYTHON_VERSION` | `3.14` |
-| `DEBIAN_VERSION` | `trixie` |
+| `GDAL_VERSION` | `3.12.4` |
+| `PYTHON_VERSION` | `3.12` |
 | `MAPPROXY_BASE_DIR` | `/var/lib/mapproxy` |
 
 ### Atualizando a versão do MapProxy
@@ -311,7 +314,7 @@ As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt).
 
 ### Vulnerabilidades conhecidas e aceitas
 
-O `pip` 26.2.1, a versão mais recente, traz cópias embutidas (*vendored*) de algumas bibliotecas em versões com CVEs conhecidas. Ele está presente no venv e no Python do sistema:
+O `pip` 26.2.2 (versão verificada em 20/10/2026) traz cópias embutidas (*vendored*) de algumas bibliotecas em versões com CVEs conhecidas. Ele está no venv onde o MapProxy é instalado (`/opt/geosgb/venv`, da imagem base), e o Python do sistema traz outra cópia no `ensurepip`:
 
 | Biblioteca embutida | Versão | CVEs altas |
 |---|---|---|
@@ -321,15 +324,14 @@ O `pip` 26.2.1, a versão mais recente, traz cópias embutidas (*vendored*) de a
 
 **O risco foi aceito**, porque esse código só é executado quando alguém roda o `pip`. O MapProxy e o uWSGI não o usam: o `urllib3` usado pelo MapProxy é outra instalação, já na versão corrigida (2.8.0). Na prática, o risco se limita a quem executar `pip install` dentro do container, o que não faz parte do uso normal da imagem.
 
-Essa decisão será revista quando sair um `pip` com as dependências embutidas atualizadas. O `pip` vem da imagem base do Python, então ele é atualizado quando uma nova imagem `python:3.14` trouxer uma versão nova, o que o rebuild mensal incorpora. Se a sua política de segurança não aceitar esses achados, uma imagem derivada pode remover o `pip`:
+Essa decisão será revista quando sair um `pip` com as dependências embutidas atualizadas. O `pip` vem da imagem base `ndscprm/gdal`, então ele é atualizado quando uma nova versão dela trouxer um `pip` novo, o que o rebuild mensal incorpora. Se a sua política de segurança não aceitar esses achados, uma imagem derivada pode remover o `pip`:
 
 ```dockerfile
 FROM ndscprm/mapproxy:7.0.0
 USER 0
-RUN /var/lib/mapproxy/venv/bin/python -m pip uninstall -y pip && \
-    /usr/local/bin/python3 -m pip uninstall -y pip && \
+RUN /opt/geosgb/venv/bin/python -m pip uninstall -y pip && \
     rm -rf /usr/local/lib/python3*/ensurepip
-USER 55000:0
+USER 1000
 ```
 
 ## Licença

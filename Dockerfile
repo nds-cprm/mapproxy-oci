@@ -1,31 +1,27 @@
-ARG DEBIAN_VERSION=trixie
-ARG PYTHON_VERSION=3.14
+# base images: ndscprm/gdal (Debian trixie + official Python + GDAL in /opt/geosgb)
+ARG GDAL_VERSION=3.12.4
+ARG PYTHON_VERSION=3.12
 
 # default MapProxy version, also read by the CI workflow (keep this format)
 ARG MAPPROXY_VERSION=7.0.0
 ARG MAPPROXY_BASE_DIR=/var/lib/mapproxy
 
 
-FROM docker.io/library/python:${PYTHON_VERSION}-${DEBIAN_VERSION} AS build
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel AS build
 
 ARG MAPPROXY_BASE_DIR
 ARG MAPPROXY_VERSION
 
 WORKDIR ${MAPPROXY_BASE_DIR}
 
+# envsubst (the devel image already has the compilers and -dev headers)
 RUN apt-get update && \
     apt-get install --yes --no-install-recommends --no-install-suggests \
-        build-essential libjpeg-dev zlib1g-dev gettext \
-        libfreetype6-dev libgeos-dev libgdal-dev libxml2-dev libxslt-dev && \
+        gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
-RUN python -m venv --prompt mapproxy venv
-
-ENV PATH=${MAPPROXY_BASE_DIR}/venv/bin:${PATH}
-
-COPY requirements.txt /tmp/
-
-RUN pip install --no-cache-dir --use-pep517 -r /tmp/requirements.txt && \
+RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
+    pip install --no-cache-dir --use-pep517 -r /tmp/requirements.txt && \
     pip install --no-cache-dir -c /tmp/requirements.txt "MapProxy==${MAPPROXY_VERSION}"
 
 COPY src/ ./
@@ -38,7 +34,8 @@ RUN mkdir config && \
     mapproxy-util create -t base-config ./config && \
     chmod -R g=u ./config
 
-FROM docker.io/library/python:${PYTHON_VERSION}-slim-${DEBIAN_VERSION} AS release
+
+FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION} AS release
 
 ARG MAPPROXY_BASE_DIR
 ARG MAPPROXY_VERSION
@@ -52,15 +49,15 @@ LABEL org.opencontainers.image.title="MapProxy" \
 
 WORKDIR ${MAPPROXY_BASE_DIR}
 
-RUN apt-get update && \
-    apt-get install --yes --no-install-recommends --no-install-suggests \
-        libjpeg62-turbo zlib1g libfreetype6 libgeos-c1t64 libgdal36 \
-        libxml2 libxslt1.1 libnss-wrapper tini && \
-    rm -rf /var/lib/apt/lists/*
+# MapProxy and uWSGI are installed in the base image venv (same packages as
+# the release one, plus the ones from requirements.txt)
+COPY --from=build /opt/geosgb/venv /opt/geosgb/venv
 
 COPY --from=build ${MAPPROXY_BASE_DIR} .
 
-COPY --chmod=755 scripts/ /
+# sourced (not executed) by the base image /docker-entrypoint.sh, so the umask
+# and HOME it sets reach the container command
+COPY --chmod=644 docker-entrypoint.d/ /docker-entrypoint.d/
 
 COPY LICENSE NOTICE /usr/share/doc/mapproxy-oci/
 
@@ -68,23 +65,12 @@ RUN echo "umask 002" >> /etc/bash.bashrc && \
     mkdir -p /var/lib/uwsgi && \
     mv uwsgi.conf /var/lib/uwsgi
 
-# nss_wrapper: arbitrary UIDs (e.g. OpenShift) get a passwd entry from the
-# entrypoint. Set at image level so it also applies to "podman exec" processes.
-# The files are world-writable on purpose: setuid binaries ignore LD_PRELOAD,
-# so they only affect name lookups of unprivileged processes.
-RUN ln -s "$(dpkg -L libnss-wrapper | grep '/libnss_wrapper\.so$')" /usr/lib/libnss_wrapper.so && \
-    mkdir -p /var/lib/nss_wrapper && \
-    cp /etc/passwd /etc/group /var/lib/nss_wrapper/ && \
-    chmod 666 /var/lib/nss_wrapper/passwd /var/lib/nss_wrapper/group
+# USER_NAME: name given by the base image nss_wrapper to UIDs without a passwd
+# entry (as 1000, with group 0)
+ENV HOME=${MAPPROXY_BASE_DIR}/config \
+    USER_NAME=mapproxy
 
-ENV LD_PRELOAD=/usr/lib/libnss_wrapper.so \
-    NSS_WRAPPER_PASSWD=/var/lib/nss_wrapper/passwd \
-    NSS_WRAPPER_GROUP=/var/lib/nss_wrapper/group \
-    HOME=${MAPPROXY_BASE_DIR}/config \
-    VIRTUAL_ENV=${MAPPROXY_BASE_DIR}/venv \
-    PATH=${MAPPROXY_BASE_DIR}/venv/bin:${PATH}
-
-USER 55000:0
+USER 1000
 
 EXPOSE 8000
 
@@ -92,6 +78,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD [ "uwsgi", "--socket", "127.0.0.1:8000", "--nagios" ]
 
-ENTRYPOINT [ "tini", "--", "/docker-entrypoint.sh" ]
-
-CMD [ "/start.sh" ]
+# ENTRYPOINT inherited from the base image (/docker-entrypoint.sh): runs the
+# /docker-entrypoint.d scripts, then the CMD
+CMD [ "uwsgi", "--ini", "/var/lib/uwsgi/uwsgi.conf" ]

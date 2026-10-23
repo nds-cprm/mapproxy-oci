@@ -10,12 +10,12 @@ x-logging: &logging
     max-file: "3"
 
 services:
-  # Prepares the cache volume for the image user (UID 55000, GID 0).
+  # Prepares the cache volume for the image user (UID 1000, GID 0).
   # Runs once and exits; mapproxy only starts after it succeeds.
   cache-init:
     image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
     user: "0:0"
-    entrypoint: ["sh", "-c", "chown 55000:0 /cache && chmod 2775 /cache"]
+    entrypoint: ["sh", "-c", "chown 1000:0 /cache && chmod 2775 /cache"]
     volumes:
       - cache:/cache
     restart: "no"
