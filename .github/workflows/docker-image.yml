@@ -17,6 +17,12 @@ permissions:
   contents: read
   security-events: write
 
+# one build at a time (e.g. a manual run and the monthly rebuild), so they never
+# push the same tags in parallel; a running build is never cancelled
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 env:
   IMAGE: ndscprm/mapproxy
 
