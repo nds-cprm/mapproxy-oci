@@ -12,7 +12,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 ## CI
 
-- [ ] 🟠 **Enviar o `concurrency` do workflow.** Já está no commit `36f1936`, mas a branch não foi enviada nem mesclada na `main`. Até lá, um disparo manual no dia 1 pode rodar em paralelo com o rebuild agendado.
+- [x] 🟠 **Enviar o `concurrency` do workflow.** A branch `change-base-image` (com o `concurrency` do commit `36f1936`) foi mesclada na `main` em 25/10/2026; um disparo manual não roda mais em paralelo com o rebuild agendado.
 - [ ] 🟠 **Healthcheck da imagem publicada no Podman.** O buildx publica com media types OCI, e o Podman ignora o `Healthcheck` dessas imagens (`podman healthcheck run` → "has no defined healthcheck"). O Docker o aplica normalmente. Escolher uma opção:
   - documentar no README que, no Podman, é preciso usar `--health-cmd 'uwsgi --socket 127.0.0.1:8000 --nagios'` ou definir o healthcheck no Compose ou no Quadlet; hoje o texto fala só de builds locais com `--format docker`;
   - ou publicar com media types Docker (`outputs: type=image,oci-mediatypes=false` no `build-push-action`). Precisa de teste, porque as attestations de proveniência dependem do índice OCI e podem exigir `provenance: false`.
@@ -45,7 +45,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 ## Ordem sugerida
 
 1. ~~Corrigir o `HOME` com rootfs somente leitura.~~
-2. Enviar a branch (inclui o `concurrency`).
+2. ~~Enviar a branch (inclui o `concurrency`).~~
 3. Decidir o caso do healthcheck no Podman.
 4. Dependabot.
 5. O restante conforme houver tempo.
