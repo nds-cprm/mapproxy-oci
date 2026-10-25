@@ -65,6 +65,8 @@ services:
       - "8080:8080"
     volumes:
       - ./conf/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # MapProxy tile cache, served directly (see conf/nginx/nginx.conf)
+      - cache:/var/lib/mapproxy/cache:ro
     restart: unless-stopped
     logging: *logging
 

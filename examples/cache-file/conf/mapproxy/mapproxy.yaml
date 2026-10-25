@@ -26,6 +26,12 @@ caches:
   litoestratigrafia_cache:
     grids: [webmercator]
     sources: [sgb_wms]
+    # served by nginx straight from disk: one grid per cache, tms layout
+    # (<z>/<x>/<y>, the same as the WMTS URL) in <cache dir>/<layer>/<grid>
+    cache:
+      type: file
+      directory_layout: tms
+      directory: ${MAPPROXY_CACHE_DIR}/litoestratigrafia/webmercator
 
 sources:
   sgb_wms:
