@@ -254,6 +254,37 @@ location / {
 
 Para servir **HTTP direto**, sobrescreva `/var/lib/uwsgi/uwsgi.conf` com uma cópia que use `http-socket = :8000` no lugar de `socket`. O healthcheck padrão fala o protocolo uwsgi, então substitua também o `/usr/local/bin/healthcheck` (veja [Healthcheck](#healthcheck)). Outra opção é manter o `socket` e acrescentar um `http-socket` em outra porta.
 
+### HTTPS, proxies e subcaminho
+
+O MapProxy monta as URLs absolutas dos documentos de capabilities (WMS, WMTS e TMS) a partir do pedido. Ele não tem uma opção de URL pública fixa: as URLs saem certas quando o pedido chega com as informações certas.
+
+| Cenário | O que fazer | URL gerada |
+|---|---|---|
+| TLS no próprio nginx (`listen ... ssl`) | Nada: o `uwsgi_params` envia `HTTPS=on`, e o uWSGI passa o esquema `https` ao MapProxy | `https://<host>/service` |
+| Terminador TLS ou balanceador na frente do nginx | O proxy externo envia `X-Forwarded-Proto: https` (e, se trocar o `Host`, `X-Forwarded-Host`). O nginx repassa esses cabeçalhos sem configuração extra | `https://<X-Forwarded-Host>/service` |
+| Publicação num subcaminho (`/mapproxy/`) | Enviar `X-Script-Name` com o prefixo; o MapProxy o retira do caminho e o acrescenta às URLs | `https://<host>/mapproxy/service` |
+
+O `X-Forwarded-Host` precisa incluir a porta pública, se ela não for a padrão. Sem ele, o MapProxy usa o `Host` recebido, e um proxy externo que reescreve o `Host` para `nginx:8080` gera URLs com esse endereço interno.
+
+Para o subcaminho, no `conf/nginx/nginx.conf`:
+
+```nginx
+location /mapproxy/ {
+    # uwsgi_param in a location drops the ones inherited from server: include them again
+    include uwsgi_params;
+    uwsgi_param HTTP_X_SCRIPT_NAME /mapproxy;
+    uwsgi_pass mapproxy;
+}
+```
+
+- O `include uwsgi_params` dentro do `location` é obrigatório. Qualquer `uwsgi_param` num bloco cancela os herdados do nível de cima, e o MapProxy, sem `PATH_INFO` e `QUERY_STRING`, responde a página "Welcome to MapProxy" para qualquer pedido.
+- O cache de tiles do exemplo (`location ~ ^/(wmts|tms)/`) não cobre `/mapproxy/wmts/`. Para manter o cache, ajuste a expressão para `^/mapproxy/(wmts|tms)/`, com o mesmo `uwsgi_param`.
+- Se o proxy externo já envia `X-Script-Name`, o nginx o repassa e o `location` acima não é necessário.
+
+Como o nginx repassa esses cabeçalhos do cliente, quem acessa o nginx diretamente pode alterar as URLs dos capabilities que *ele mesmo* recebe. Isso não afeta outros usuários: os capabilities não passam pelo cache do nginx, e os tiles não contêm URLs. Para fixar os valores mesmo assim, defina-os com `uwsgi_param` (por exemplo, `uwsgi_param HTTP_X_FORWARDED_PROTO https;`), seguindo a mesma regra do `include uwsgi_params`.
+
+Verificado em 25/10/2026, com o exemplo do Compose, TLS autoassinado no nginx e `/mapproxy/` como subcaminho, combinados entre si.
+
 ## Recursos e uWSGI
 
 Os padrões do [`uwsgi.conf`](src/uwsgi.conf.envsubst) são dimensionados para **2 CPUs e 4 GB de memória**:

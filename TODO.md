@@ -19,7 +19,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 ## Documentação (README)
 
 - [x] ⚪ **Docker não reinicia containers `unhealthy`.** Explicado na seção "Healthcheck" do README, junto com o comportamento de cada runtime quando o check falha.
-- [ ] ⚪ **HTTPS e proxy na frente do nginx.** Documentar que, com `X-Forwarded-Proto: https` vindo de um terminador TLS externo, o MapProxy gera URLs `https://` sem configuração extra; que, com TLS no próprio nginx, o `uwsgi_params` já envia `HTTPS`; e o uso de `X-Script-Name` para publicar num subcaminho (`/mapproxy/`).
+- [x] ⚪ **HTTPS e proxy na frente do nginx.** Documentado na seção "HTTPS, proxies e subcaminho" do README e verificado em 25/10/2026: `X-Forwarded-Proto`/`X-Forwarded-Host` de um proxy externo, TLS no próprio nginx (`HTTPS` do `uwsgi_params`) e `X-Script-Name` para `/mapproxy/`. Inclui a armadilha do `uwsgi_param` num `location`, que cancela o `include uwsgi_params` herdado, e o cache de tiles no subcaminho.
 - [x] ⚪ **Texto sobre o `pip` datado.** Trocado "a versão mais recente" pela data da verificação.
 
 ## Build
