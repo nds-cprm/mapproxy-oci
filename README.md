@@ -26,198 +26,16 @@ docker run -d --name mapproxy -p 8000:8000 ndscprm/mapproxy:7.0.0
 
 Sem configuração própria, o container gera uma configuração de exemplo em `/var/lib/mapproxy/config`. **Ela serve só para testes**: tem a página `demo` habilitada e placeholders (`${server}`, `$layer`) que geram avisos no log.
 
-A porta 8000 fala o **protocolo uwsgi**, não HTTP. Para acessar pelo navegador, use um proxy reverso (ver [Rede](#rede)) ou o exemplo de produção abaixo.
+A porta 8000 fala o **protocolo uwsgi**, não HTTP. Para acessar pelo navegador, use um proxy reverso (ver [Rede](#rede)) ou um dos [exemplos com Docker Compose](examples/README.md).
 
-## Produção com Docker Compose
+## Exemplos com Docker Compose
 
-O diretório [`examples/`](examples) traz dois exemplos completos, cada um com o seu `docker-compose.yaml` e os arquivos montados nos containers em `conf/`:
+O diretório [`examples/`](examples/README.md) traz exemplos de produção prontos: MapProxy atrás de nginx, rootfs somente leitura, limites de recursos, logs com rotação e tarefas de seed. A documentação deles, com o `docker-compose.yaml` comentado, está em [`examples/README.md`](examples/README.md).
 
 | Exemplo | Cache de tiles |
 |---|---|
-| [`examples/cache-file/`](examples/cache-file) | Arquivos num volume (descrito abaixo) |
-| [`examples/cache-couchdb/`](examples/cache-couchdb) | Banco CouchDB (ver [Cache no CouchDB](#cache-no-couchdb)) |
-
-Arquivos do `examples/cache-file/`:
-
-| Arquivo | Conteúdo |
-|---|---|
-| [`docker-compose.yaml`](examples/cache-file/docker-compose.yaml) | MapProxy + nginx, com volume de cache, rootfs somente leitura e limites de recursos |
-| [`conf/mapproxy/mapproxy.yaml`](examples/cache-file/conf/mapproxy/mapproxy.yaml) | Configuração do MapProxy, com o cache e a origem definidos por variáveis de ambiente |
-| [`conf/mapproxy/seed.yaml`](examples/cache-file/conf/mapproxy/seed.yaml) | Tarefas de seed e cleanup do cache (ver [Seed do cache](#seed-do-cache)) |
-| [`conf/nginx/nginx.conf`](examples/cache-file/conf/nginx/nginx.conf) | Proxy reverso HTTP → uwsgi |
-
-```yaml
-name: mapproxy-cache-file
-
-# Logs go to stdout/stderr and are stored by the container runtime; without
-# limits the json-file driver grows forever. With Docker, a host-wide default in
-# /etc/docker/daemon.json (e.g. "log-driver": "local") is an alternative.
-x-logging: &logging
-  driver: json-file
-  options:
-    max-size: 10m
-    max-file: "3"
-
-services:
-  # Prepares the cache volume for the image user (UID 1000, GID 0).
-  # Runs once and exits; mapproxy only starts after it succeeds.
-  cache-init:
-    image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
-    user: "0:0"
-    entrypoint: ["sh", "-c", "chown 1000:0 /cache && chmod 2775 /cache"]
-    volumes:
-      - cache:/cache
-    restart: "no"
-    logging: *logging
-
-  mapproxy:
-    image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
-    depends_on:
-      cache-init:
-        condition: service_completed_successfully
-    read_only: true
-    tmpfs:
-      - /tmp
-    environment:
-      # read by mapproxy.yaml (${MAPPROXY_CACHE_DIR}, ${UPSTREAM_WMS_URL})
-      MAPPROXY_CACHE_DIR: /var/lib/mapproxy/cache
-      UPSTREAM_WMS_URL: https://geoservicos.sgb.gov.br/geoserver/ows?
-    volumes:
-      - ./conf/mapproxy/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
-      - ./conf/mapproxy/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
-      - cache:/var/lib/mapproxy/cache
-    healthcheck:
-      test: ["CMD", "healthcheck"]
-      interval: 30s
-      timeout: 5s
-      start_period: 15s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: "2"
-          memory: 4g
-    restart: unless-stopped
-    logging: *logging
-
-  # The image speaks the uwsgi protocol on port 8000; nginx exposes it as HTTP.
-  # Unprivileged image: runs as UID 101 and listens on 8080.
-  nginx:
-    image: docker.io/nginxinc/nginx-unprivileged:1.30-alpine
-    depends_on:
-      mapproxy:
-        condition: service_healthy
-    read_only: true
-    tmpfs:
-      - /tmp
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./conf/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    restart: unless-stopped
-    logging: *logging
-
-volumes:
-  cache:
-```
-
-Para subir, no diretório do exemplo:
-
-```sh
-cd examples/cache-file
-docker compose up -d
-```
-
-O serviço fica disponível em `http://localhost:8080`:
-
-- WMS: `http://localhost:8080/service?SERVICE=WMS&REQUEST=GetCapabilities`
-- WMTS: `http://localhost:8080/wmts/1.0.0/WMTSCapabilities.xml`
-- TMS: `http://localhost:8080/tms/1.0.0/`
-
-O que cada parte faz:
-
-- **`cache-init`** ajusta o dono do volume de cache para o usuário da imagem. Volumes nomeados do Docker são criados como `root`, e o Compose não tem equivalente ao `fsGroup` do Kubernetes.
-- **`read_only: true` + `tmpfs: /tmp`**: a raiz do container fica somente leitura; só o cache e o `/tmp` são graváveis.
-- **`conf/mapproxy/mapproxy.yaml` montado somente leitura** substitui a configuração de exemplo. Como ele existe, o entrypoint não gera nada.
-- **Variáveis de ambiente** definem o diretório do cache e a URL da origem, sem editar o YAML (ver [Variáveis no `mapproxy.yaml`](#variáveis-no-mapproxyyaml)).
-- **Limites de recursos** batem com os padrões do uWSGI da imagem (2 CPUs, 4 GB; ver [Recursos](#recursos-e-uwsgi)).
-- **Logs**: todos os serviços escrevem em stdout/stderr, e o runtime guarda essa saída. O bloco `x-logging` limita cada serviço a 3 arquivos de 10 MB (`json-file`, aceito pelo Docker e pelo Podman). No Docker, também dá para definir isso para o host inteiro em `/etc/docker/daemon.json`, por exemplo com `"log-driver": "local"`, que já faz rotação e compressão (o Podman não aceita esse driver). No Kubernetes, o kubelet já faz a rotação.
-- **nginx** usa a imagem `nginx-unprivileged` (UID 101, porta 8080), também com rootfs somente leitura, e só recebe tráfego depois que o MapProxy fica saudável.
-
-O [`conf/nginx/nginx.conf`](examples/cache-file/conf/nginx/nginx.conf) também traz ajustes de desempenho:
-
-| Ajuste | Efeito medido no exemplo |
-|---|---|
-| Cache do nginx (`uwsgi_cache`) para `/wmts/` e `/tms/` | Tiles repetidos são servidos sem passar pelo uWSGI: de ~6.500 para ~18.700 req/s (16 conexões), latência p99 de 5 para 1 ms. O cabeçalho `X-Cache-Status` indica `HIT`/`MISS` |
-| `expires_hours: 24` no `conf/mapproxy/mapproxy.yaml` | Tiles saem com `Cache-Control: public, max-age=86400`, então navegadores e CDNs também fazem cache |
-| `gzip` para XML | `GetCapabilities` WMS de 2,5 KB para 0,8 KB; `WMTSCapabilities` de 10,6 KB para 1,6 KB |
-| Buffers maiores (`uwsgi_buffers 16 64k`) | Respostas de até ~1 MB ficam em memória, e o worker do uWSGI é liberado logo |
-| `limit_conn` (20 conexões simultâneas por IP, rejeição com 429) | Um único cliente não consegue ocupar todos os 16 workers |
-
-O cache do nginx fica no `/tmp` (tmpfs) do container, com no máximo 512 MB, e se perde ao recriar o container. O WMS (`/service`) não é cacheado no nginx, porque cada combinação de bbox e tamanho gera uma URL diferente.
-
-> **Atenção ao `limit_conn`:** o limite é por endereço IP. Usuários atrás de um mesmo NAT, ou um balanceador ou terminador TLS na frente do nginx, aparecem como um único IP e seriam bloqueados juntos. Nesses casos, aumente o limite ou configure o IP real do cliente (módulo `realip` do nginx).
-
-> **Atenção ao tempo de resposta da origem:** um pedido que leva mais de 60 s é interrompido pelo `harakiri` do uWSGI, e o nginx responde **502** (`upstream prematurely closed connection` no log). Com a origem do exemplo, um GetMap sem cache levou de 30 a 40 s em 25/10/2026, então pedidos maiores ou uma origem mais lenta chegam perto desse limite. O WMS (`/service`) também usa o cache de tiles do MapProxy, então o seed dos níveis baixos (`litoestratigrafia_brasil`, ver [Seed do cache](#seed-do-cache)) reduz bastante esse tempo. Para aumentar o limite, mude juntos o `harakiri` de um `uwsgi.conf` próprio (ver [Recursos e uWSGI](#recursos-e-uwsgi)) e o `uwsgi_read_timeout` do `conf/nginx/nginx.conf`, que fica alguns segundos acima. O timeout do cliente HTTP do MapProxy (`globals.http.client_timeout`, 60 s por padrão) também precisa acompanhar: senão, o pedido à origem falha antes do novo limite.
-
-> A origem do exemplo (a camada de litoestratigrafia 1:1.000.000 do [GeoServer do SGB](https://geoservicos.sgb.gov.br/geoserver/ows)) é só ilustrativa. Respeite os termos de uso dela, ou troque `UPSTREAM_WMS_URL` e a camada pela sua própria fonte de dados.
-
-Para testar o exemplo com uma imagem construída localmente: `MAPPROXY_IMAGE=mapproxy:local docker compose up -d`, no diretório do exemplo.
-
-### Seed do cache
-
-O [`conf/mapproxy/seed.yaml`](examples/cache-file/conf/mapproxy/seed.yaml), baseado no exemplo gerado pelo `mapproxy-util`, define duas tarefas:
-
-| Tarefa | O que faz |
-|---|---|
-| `litoestratigrafia_brasil` (seed) | Gera os níveis 0 a 8 sobre o Brasil (coverage em EPSG:4674) e recria tiles com mais de 30 dias. São ~1.800 tiles |
-| `litoestratigrafia_old_tiles` (cleanup) | Remove tiles com mais de 14 dias dos níveis 9 em diante, que são gerados sob demanda |
-
-Para rodar, com o Compose no ar:
-
-```sh
-# ver o que seria feito, sem baixar nada
-docker compose exec mapproxy mapproxy-seed \
-  -f /var/lib/mapproxy/config/mapproxy.yaml \
-  -s /var/lib/mapproxy/config/seed.yaml --summary
-
-# seed (2 processos simultâneos)
-docker compose exec mapproxy mapproxy-seed \
-  -f /var/lib/mapproxy/config/mapproxy.yaml \
-  -s /var/lib/mapproxy/config/seed.yaml -c 2 --seed litoestratigrafia_brasil
-
-# cleanup
-docker compose exec mapproxy mapproxy-seed \
-  -f /var/lib/mapproxy/config/mapproxy.yaml \
-  -s /var/lib/mapproxy/config/seed.yaml --cleanup litoestratigrafia_old_tiles
-```
-
-O `mapproxy-seed` roda dentro do container `mapproxy`, com as mesmas variáveis de ambiente (`MAPPROXY_CACHE_DIR`, `UPSTREAM_WMS_URL`) e o mesmo volume de cache. Use `--dry-run` para contar os tiles antes de rodar. Mantenha a concorrência (`-c`) baixa ao semear a partir de servidores de terceiros. Para rodar periodicamente, agende esses comandos no host (cron, timer do systemd) ou, no Kubernetes, num `CronJob` que monte o mesmo volume.
-
-### Cache no CouchDB
-
-O [`examples/cache-couchdb/`](examples/cache-couchdb) é uma cópia do exemplo acima com os tiles gravados num [CouchDB](https://couchdb.apache.org) no lugar do volume. Cada tile vira um documento (`<grade>-<z>-<x>-<y>`) com a imagem como anexo e o horário de criação, e o MapProxy cria o banco (`litoestratigrafia_webmercator`) no primeiro uso. As diferenças:
-
-- **Serviço `couchdb`** (`couchdb:3.5`), sem porta publicada no host, com os dados no volume `couchdb-data` e healthcheck em `/_up`. O MapProxy só sobe depois que ele fica saudável.
-- **Senha obrigatória:** o Compose não sobe sem `COUCHDB_PASSWORD`. Defina-a num arquivo `.env` ao lado do `docker-compose.yaml`, que o `.gitignore` do repositório já ignora; `COUCHDB_USER` é `mapproxy` por padrão. O MapProxy recebe as duas variáveis e monta a URL `http://<usuário>:<senha>@couchdb:5984`, então uma senha com caracteres especiais precisa estar codificada para URL.
-- **[`conf/couchdb/local.ini`](examples/cache-couchdb/conf/couchdb/local.ini)** configura um nó só (`single_node = true`, que cria `_users` e `_replicator`, e `[cluster] n = 1`). No primeiro boot, o CouchDB registra um erro `database_does_not_exist` para `_users`, antes de criá-lo; ele não se repete.
-- **O CouchDB roda como o usuário dele (`5984:5984`)** desde o início. Iniciado como root, o entrypoint da imagem tenta ajustar o dono de tudo em `/opt/couchdb`, falha no `local.ini` montado somente leitura e encerra o container sem mensagem nenhuma.
-- **Sem `cache-init` nem volume no MapProxy:** o `MAPPROXY_CACHE_DIR` aponta para o `/tmp` (tmpfs), que só guarda os locks de tiles.
-- **O nginx mantém o `uwsgi_cache`** na frente do MapProxy, como no outro exemplo.
-
-```sh
-cd examples/cache-couchdb
-echo "COUCHDB_PASSWORD=$(openssl rand -hex 16)" > .env
-docker compose up -d
-```
-
-**Cleanup:** num cache em arquivos, o `mapproxy-seed --cleanup` percorre os diretórios. No CouchDB ele não tem como listar o que está gravado e consulta tile por tile da cobertura. Por isso a tarefa `litoestratigrafia_old_tiles` desse exemplo fica limitada ao Brasil e aos níveis 9 a 12, e levou ~6 min em 25/10/2026; cada nível a mais leva 4 vezes mais. Para descartar o cache inteiro, apague o banco e **reinicie o MapProxy**, que só cria o banco uma vez por processo (até lá, os pedidos de tiles respondem 500):
-
-```sh
-docker compose exec couchdb sh -c \
-  'curl -s -u "$COUCHDB_USER:$COUCHDB_PASSWORD" -X DELETE http://127.0.0.1:5984/litoestratigrafia_webmercator'
-docker compose restart mapproxy
-```
+| [`cache-file`](examples/README.md#cache-file) | Arquivos num volume; o nginx serve os tiles direto do disco |
+| [`cache-couchdb`](examples/README.md#cache-couchdb) | Banco CouchDB; o nginx mantém um cache próprio |
 
 ## Configuração
 
@@ -250,7 +68,7 @@ Cuidados:
 
 ### Cache de tiles
 
-Por padrão, o MapProxy grava o cache em `cache_data/`, ao lado do `mapproxy.yaml`. Em produção, prefira um volume próprio para o cache, apontado por `globals.cache.base_dir`, como no exemplo do Compose. Assim a configuração, pequena e versionável, fica separada do cache, grande e descartável.
+Por padrão, o MapProxy grava o cache em `cache_data/`, ao lado do `mapproxy.yaml`. Em produção, prefira um volume próprio para o cache, apontado por `globals.cache.base_dir`, como no exemplo [`cache-file`](examples/README.md#cache-file). Assim a configuração, pequena e versionável, fica separada do cache, grande e descartável.
 
 ### Página demo
 
@@ -263,7 +81,7 @@ A página `/demo/` existe só se o `mapproxy.yaml` tiver `demo:` em `services`. 
 - Quando a UID não existe no `/etc/passwd`, o script `10-enable-nss-wrapper.sh` da imagem base a registra via nss_wrapper com o nome `mapproxy` (variável `USER_NAME`), e `whoami` e as consultas de nome funcionam no uWSGI. O registro vale só para os processos iniciados pelo entrypoint; num `docker exec`, o usuário aparece sem nome. O Podman já acrescenta a UID ao `/etc/passwd` do container, e nesse caso o nss_wrapper não é necessário.
 - **Volumes graváveis** (configuração, cache) precisam permitir escrita ao UID do container ou ao grupo `0`:
   - Kubernetes: `securityContext.fsGroup`;
-  - Docker/Podman: prepare o volume, como faz o serviço `cache-init` do exemplo.
+  - Docker/Podman: prepare o volume, como faz o serviço `cache-init` do exemplo [`cache-file`](examples/README.md#cache-file).
 - Arquivos criados pelo container ficam graváveis pelo grupo (`umask 002`).
 
 ### Sistema de arquivos raiz somente leitura
@@ -297,7 +115,7 @@ O MapProxy monta as URLs absolutas dos documentos de capabilities (WMS, WMTS e T
 
 O `X-Forwarded-Host` precisa incluir a porta pública, se ela não for a padrão. Sem ele, o MapProxy usa o `Host` recebido, e um proxy externo que reescreve o `Host` para `nginx:8080` gera URLs com esse endereço interno.
 
-Para o subcaminho, no `conf/nginx/nginx.conf` do exemplo:
+Para o subcaminho, no nginx:
 
 ```nginx
 location /mapproxy/ {
@@ -309,12 +127,12 @@ location /mapproxy/ {
 ```
 
 - O `include uwsgi_params` dentro do `location` é obrigatório. Qualquer `uwsgi_param` num bloco cancela os herdados do nível de cima, e o MapProxy, sem `PATH_INFO` e `QUERY_STRING`, responde a página "Welcome to MapProxy" para qualquer pedido.
-- O cache de tiles do exemplo (`location ~ ^/(wmts|tms)/`) não cobre `/mapproxy/wmts/`. Para manter o cache, ajuste a expressão para `^/mapproxy/(wmts|tms)/`, com o mesmo `uwsgi_param`.
+- Nos [exemplos](examples/README.md#subcaminho), os `location` de tiles também precisam do prefixo.
 - Se o proxy externo já envia `X-Script-Name`, o nginx o repassa e o `location` acima não é necessário.
 
-Como o nginx repassa esses cabeçalhos do cliente, quem acessa o nginx diretamente pode alterar as URLs dos capabilities que *ele mesmo* recebe. Isso não afeta outros usuários: os capabilities não passam pelo cache do nginx, e os tiles não contêm URLs. Para fixar os valores mesmo assim, defina-os com `uwsgi_param` (por exemplo, `uwsgi_param HTTP_X_FORWARDED_PROTO https;`), seguindo a mesma regra do `include uwsgi_params`.
+Como o nginx repassa esses cabeçalhos do cliente, quem acessa o nginx diretamente pode alterar as URLs dos capabilities que *ele mesmo* recebe. Isso não afeta outros usuários: o nginx não guarda os capabilities, e os tiles não contêm URLs. Para fixar os valores mesmo assim, defina-os com `uwsgi_param` (por exemplo, `uwsgi_param HTTP_X_FORWARDED_PROTO https;`), seguindo a mesma regra do `include uwsgi_params`.
 
-Verificado em 25/10/2026, com o exemplo do Compose, TLS autoassinado no nginx e `/mapproxy/` como subcaminho, combinados entre si.
+Verificado em 25/10/2026, com o exemplo [`cache-file`](examples/README.md#cache-file), TLS autoassinado no nginx e `/mapproxy/` como subcaminho, combinados entre si.
 
 ## Recursos e uWSGI
 
@@ -340,7 +158,7 @@ O `HEALTHCHECK` do Dockerfile não é suportado por todos os runtimes: o Podman 
 | Runtime | Onde declarar | Quando o check falha |
 |---|---|---|
 | `docker run` | `HEALTHCHECK` da imagem (automático) | só marca `unhealthy` |
-| Docker Compose / `podman compose` | `healthcheck:` no Compose, como no exemplo acima | só marca `unhealthy` (Docker) |
+| Docker Compose / `podman compose` | `healthcheck:` no Compose, como nos [exemplos](examples/README.md) | só marca `unhealthy` (Docker) |
 | Podman | `--health-cmd` ou Quadlet | pode reiniciar com `--health-on-failure` / `HealthOnFailure=` |
 | Kubernetes / OpenShift | probes `exec` | a liveness reinicia o container; a readiness tira o pod do Service |
 
@@ -403,7 +221,7 @@ docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
 A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). O workflow lê esse valor quando nenhuma versão é informada no disparo manual, e também no rebuild mensal. Para mudar de versão:
 
 1. Altere `ARG MAPPROXY_VERSION=` no `Dockerfile`, mantendo o formato `X.Y.Z`.
-2. Atualize a tag padrão nos `docker-compose.yaml` de `examples/` e os exemplos deste README. Para achar todas as ocorrências: `grep -rn "7\.0\.0" --exclude-dir=.git .`
+2. Atualize a tag padrão nos `docker-compose.yaml` de `examples/` e os exemplos deste README e do [`examples/README.md`](examples/README.md). Para achar todas as ocorrências: `grep -rn "7\.0\.0" --exclude-dir=.git .`
 3. Rode o build localmente e confira se as dependências do `requirements.txt` continuam compatíveis.
 4. Faça o commit e dispare o workflow, ou aguarde o rebuild mensal.
 
