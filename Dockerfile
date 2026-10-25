@@ -20,9 +20,16 @@ RUN apt-get update && \
         gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
+# wheels of MapProxy and its dependencies (uwsgi and any other sdist are built
+# here, with the compilers); the release stage installs the same wheels. They
+# are also installed here, as mapproxy-util creates the base config below
 RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
-    pip install --no-cache-dir --use-pep517 -r /tmp/requirements.txt && \
-    pip install --no-cache-dir -c /tmp/requirements.txt "MapProxy==${MAPPROXY_VERSION}"
+    pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
+        -r /tmp/requirements.txt -c /tmp/requirements.txt \
+        "MapProxy==${MAPPROXY_VERSION}" && \
+    pip install --no-cache-dir --no-index --find-links /wheels \
+        -r /tmp/requirements.txt -c /tmp/requirements.txt \
+        "MapProxy==${MAPPROXY_VERSION}"
 
 COPY src/ ./
 
@@ -49,9 +56,19 @@ LABEL org.opencontainers.image.title="MapProxy" \
 
 WORKDIR ${MAPPROXY_BASE_DIR}
 
-# MapProxy and uWSGI are installed in the base image venv (same packages as
-# the release one, plus the ones from requirements.txt)
-COPY --from=build /opt/geosgb/venv /opt/geosgb/venv
+# MapProxy and uWSGI are installed into the base image venv by its own pip,
+# from the wheels of the build stage and offline (--no-index). Copying the
+# build venv instead would mix two versions of a package whenever -devel and
+# the release image differ (e.g. one of them stale), with no build error.
+# pip check and the smoke test make a broken environment fail the build
+RUN --mount=type=bind,from=build,source=/wheels,target=/wheels \
+    --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
+    pip install --no-cache-dir --no-index --find-links /wheels \
+        -r /tmp/requirements.txt -c /tmp/requirements.txt \
+        "MapProxy==${MAPPROXY_VERSION}" && \
+    pip check && \
+    python -c "import mapproxy.wsgiapp, shapely, pyproj, PIL, yaml, lxml, redis, requests" && \
+    uwsgi --version
 
 COPY --from=build ${MAPPROXY_BASE_DIR} .
 
