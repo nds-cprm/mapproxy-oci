@@ -331,7 +331,7 @@ FROM ndscprm/mapproxy:7.0.0
 USER 0
 RUN /opt/geosgb/venv/bin/python -m pip uninstall -y pip && \
     rm -rf /usr/local/lib/python3*/ensurepip
-USER 1000
+USER 1000:0
 ```
 
 ## Licença

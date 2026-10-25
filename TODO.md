@@ -6,11 +6,9 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 ## Imagem
 
-- [ ] 🔴 **Config montada é ignorada com rootfs somente leitura (Docker/Kubernetes).** O `10-enable-nss-wrapper.sh` da imagem base troca o `HOME` para `/tmp` quando ele não é gravável. Como o `HOME` é o diretório de configuração, o `20-mapproxy.sh` gera a configuração de teste em `/tmp` e o MapProxy a serve no lugar do `mapproxy.yaml` montado. Acontece quando a UID não está no `/etc/passwd` (Docker, Kubernetes, OpenShift) e o diretório de config não é gravável: o exemplo do Compose no Docker (`read_only: true`) e ConfigMaps montados como diretório. Reproduzido com `podman run --passwd=false --read-only --tmpfs /tmp -v ./docker/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro`; o Podman padrão não é afetado (ele acrescenta a UID ao passwd). Opções:
-  - na imagem base: trocar o `HOME` só quando ele estiver vazio ou for `/` (sem a condição `! -w "$HOME"`);
-  - neste projeto: separar o diretório de configuração do `HOME` (ex.: `ENV MAPPROXY_CONFIG_DIR`, lido pelo `app.py` e pelo `20-mapproxy.sh`), o que muda a interface documentada no README.
+- [x] 🔴 **Config montada é ignorada com rootfs somente leitura (Docker/Kubernetes).** O `10-enable-nss-wrapper.sh` da imagem base trocava o `HOME` para `/tmp` quando ele não era gravável, e o `20-mapproxy.sh` gerava a configuração de teste em `/tmp` no lugar do `mapproxy.yaml` montado. Corrigido na imagem base, que agora só troca o `HOME` quando ele está vazio ou é `/` (tags `3.12.4-py3.12` e `-devel` republicadas em 25/10/2026). Verificado em 25/10/2026 (Docker, `--user 123456:0 --read-only --tmpfs /tmp` com o `mapproxy.yaml` montado `:ro`): o arquivo montado é servido.
 - [ ] ⚪ **Configuração de exemplo gerada no build.** O `mapproxy-util create` do Dockerfile já deixa um `mapproxy.yaml` na imagem, então num `docker run` sem config o entrypoint não gera nada e não imprime as notas `NOTE:` de "só para testes". O README diz que o container gera a configuração na inicialização. Ou remover a geração do build, ou ajustar o texto.
-- [ ] ⚪ **`USER 1000` sem grupo.** Hoje o GID fica 0 porque a imagem base não tem a UID 1000 no passwd; `USER 1000:0` deixa isso explícito e não depende da base.
+- [x] ⚪ **`USER 1000` sem grupo.** Trocado por `USER 1000:0` no Dockerfile (e no Dockerfile derivado do README): o GID 0 fica explícito e não depende de a imagem base não ter a UID 1000 no passwd.
 
 ## CI
 
@@ -28,6 +26,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 ## Build
 
+- [ ] 🟠 **Venv copiado por cima do venv da base.** O `COPY --from=build /opt/geosgb/venv` mescla os arquivos com o venv da `release`. Se as imagens `-devel` e `release` tiverem versões diferentes de um pacote (ex.: uma das duas desatualizada no cache local), as duas versões se misturam no mesmo diretório e a imagem quebra sem erro no build. Aconteceu em 25/10/2026 com uma `-devel` local antiga (numpy 1.26.4 contra 2.5.4): `ImportError: numpy._core.multiarray failed to import` e o uWSGI encerrando. Mitigar com `docker build --pull` ou copiando só os pacotes instalados no estágio de build.
 - [ ] ⚪ **Reprodutibilidade.** Dependências transitivas sem pin (numpy, certifi, Werkzeug e outras) e imagens base fixadas por tag, não por digest. A `ndscprm/gdal` é republicada com a mesma tag.
 - [ ] ⚪ **Atualizações disponíveis** (sem CVEs nas versões atuais): Pillow 13.0.0 (major), pyproj 3.8.0, shapely 2.2.0, redis 8.1.0 (major). O Dependabot automatizaria o aviso.
 - [x] ⚪ **`requirements.txt` copiado duas vezes no estágio de build.** Removido o `COPY`; o arquivo chega só pelo `--mount=type=bind`.
@@ -45,7 +44,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 ## Ordem sugerida
 
-1. Corrigir o `HOME` com rootfs somente leitura.
+1. ~~Corrigir o `HOME` com rootfs somente leitura.~~
 2. Enviar a branch (inclui o `concurrency`).
 3. Decidir o caso do healthcheck no Podman.
 4. Dependabot.

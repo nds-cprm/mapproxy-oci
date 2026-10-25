@@ -66,11 +66,13 @@ RUN echo "umask 002" >> /etc/bash.bashrc && \
     mv uwsgi.conf /var/lib/uwsgi
 
 # USER_NAME: name given by the base image nss_wrapper to UIDs without a passwd
-# entry (as 1000, with group 0)
+# entry (such as 1000)
 ENV HOME=${MAPPROXY_BASE_DIR}/config \
     USER_NAME=mapproxy
 
-USER 1000
+# group 0 set explicitly, so writable paths (chmod g=u) work for arbitrary UIDs
+# without depending on the base image passwd
+USER 1000:0
 
 EXPOSE 8000
 
