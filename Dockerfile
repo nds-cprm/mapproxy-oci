@@ -59,6 +59,9 @@ COPY --from=build ${MAPPROXY_BASE_DIR} .
 # and HOME it sets reach the container command
 COPY --chmod=644 docker-entrypoint.d/ /docker-entrypoint.d/
 
+# health check command shared by every runtime (see HEALTHCHECK below)
+COPY --chmod=755 docker/healthcheck /usr/local/bin/healthcheck
+
 COPY LICENSE NOTICE /usr/share/doc/mapproxy-oci/
 
 RUN echo "umask 002" >> /etc/bash.bashrc && \
@@ -76,9 +79,11 @@ USER 1000:0
 
 EXPOSE 8000
 
-# uWSGI ping (uwsgi protocol), answered by a worker: fails if no worker is serving
+# uWSGI ping (uwsgi protocol), answered by a worker: fails if no worker is
+# serving. Only applied by Docker: Podman ignores it in OCI images and
+# Kubernetes never uses it, so Compose, Quadlet and probes call the same script
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD [ "uwsgi", "--socket", "127.0.0.1:8000", "--nagios" ]
+    CMD [ "healthcheck" ]
 
 # ENTRYPOINT inherited from the base image (/docker-entrypoint.sh): runs the
 # /docker-entrypoint.d scripts, then the CMD

@@ -2,6 +2,7 @@
 *
 !requirements.txt
 !src
+!docker
 !docker-entrypoint.d
 !LICENSE
 !NOTICE

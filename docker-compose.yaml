@@ -34,11 +34,11 @@ services:
       MAPPROXY_CACHE_DIR: /var/lib/mapproxy/cache
       UPSTREAM_WMS_URL: https://ows.terrestris.de/osm/service?
     volumes:
-      - ./docker/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
-      - ./docker/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
+      - ./conf/mapproxy/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
+      - ./conf/mapproxy/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
       - cache:/var/lib/mapproxy/cache
     healthcheck:
-      test: ["CMD", "uwsgi", "--socket", "127.0.0.1:8000", "--nagios"]
+      test: ["CMD", "healthcheck"]
       interval: 30s
       timeout: 5s
       start_period: 15s
@@ -64,7 +64,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./conf/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     logging: *logging
 

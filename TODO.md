@@ -13,14 +13,12 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 ## CI
 
 - [x] 🟠 **Enviar o `concurrency` do workflow.** A branch `change-base-image` (com o `concurrency` do commit `36f1936`) foi mesclada na `main` em 25/10/2026; um disparo manual não roda mais em paralelo com o rebuild agendado.
-- [ ] 🟠 **Healthcheck da imagem publicada no Podman.** O buildx publica com media types OCI, e o Podman ignora o `Healthcheck` dessas imagens (`podman healthcheck run` → "has no defined healthcheck"). O Docker o aplica normalmente. Escolher uma opção:
-  - documentar no README que, no Podman, é preciso usar `--health-cmd 'uwsgi --socket 127.0.0.1:8000 --nagios'` ou definir o healthcheck no Compose ou no Quadlet; hoje o texto fala só de builds locais com `--format docker`;
-  - ou publicar com media types Docker (`outputs: type=image,oci-mediatypes=false` no `build-push-action`). Precisa de teste, porque as attestations de proveniência dependem do índice OCI e podem exigir `provenance: false`.
+- [x] 🟠 **Healthcheck da imagem publicada no Podman.** O buildx publica com media types OCI, e o Podman ignora o `Healthcheck` dessas imagens (o Kubernetes nunca o usa). Resolvido com um comando único na imagem, `/usr/local/bin/healthcheck` (`docker/healthcheck`), chamado pelo `HEALTHCHECK`, pelo Compose e pelos exemplos do README para Podman (`--health-cmd`, Quadlet) e Kubernetes (probes). Mantidos os media types OCI (as attestations dependem deles).
 - [ ] ⚪ **Dependabot e actions por SHA.** As actions usam tags móveis (`@v7`, `@v4`, `@v1`), e não há `.github/dependabot.yml`. Criar um com os ecossistemas `github-actions`, `docker` e `pip`; opcionalmente, fixar as actions por SHA de commit.
 
 ## Documentação (README)
 
-- [ ] ⚪ **Docker não reinicia containers `unhealthy`.** No Docker e no Compose o healthcheck só marca o container; o `restart` só age quando o processo termina. Acrescentar uma frase na seção do healthcheck (o uWSGI já se recupera com `harakiri`, e o container termina se o master morrer).
+- [x] ⚪ **Docker não reinicia containers `unhealthy`.** Explicado na seção "Healthcheck" do README, junto com o comportamento de cada runtime quando o check falha.
 - [ ] ⚪ **HTTPS e proxy na frente do nginx.** Documentar que, com `X-Forwarded-Proto: https` vindo de um terminador TLS externo, o MapProxy gera URLs `https://` sem configuração extra; que, com TLS no próprio nginx, o `uwsgi_params` já envia `HTTPS`; e o uso de `X-Script-Name` para publicar num subcaminho (`/mapproxy/`).
 - [x] ⚪ **Texto sobre o `pip` datado.** Trocado "a versão mais recente" pela data da verificação.
 
@@ -33,7 +31,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 ## Exemplo (Compose / nginx)
 
-- [ ] ⚪ **Nível de log do `limit_conn`.** Cada rejeição gera uma linha `[error]` no log do nginx; acrescentar `limit_conn_log_level warn;` ao `docker/nginx.conf`.
+- [ ] ⚪ **Nível de log do `limit_conn`.** Cada rejeição gera uma linha `[error]` no log do nginx; acrescentar `limit_conn_log_level warn;` ao `conf/nginx/nginx.conf`.
 
 ## Verificado em 23/10/2026 (Podman 6.1.4, arm64)
 
@@ -46,6 +44,6 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 1. ~~Corrigir o `HOME` com rootfs somente leitura.~~
 2. ~~Enviar a branch (inclui o `concurrency`).~~
-3. Decidir o caso do healthcheck no Podman.
+3. ~~Decidir o caso do healthcheck no Podman.~~
 4. Dependabot.
 5. O restante conforme houver tempo.

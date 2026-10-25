@@ -35,11 +35,11 @@ O repositório traz um exemplo completo:
 | Arquivo | Conteúdo |
 |---|---|
 | [`docker-compose.yaml`](docker-compose.yaml) | MapProxy + nginx, com volume de cache, rootfs somente leitura e limites de recursos |
-| [`docker/mapproxy.yaml`](docker/mapproxy.yaml) | Configuração do MapProxy, com o cache e a origem definidos por variáveis de ambiente |
-| [`docker/seed.yaml`](docker/seed.yaml) | Tarefas de seed e cleanup do cache (ver [Seed do cache](#seed-do-cache)) |
-| [`docker/nginx.conf`](docker/nginx.conf) | Proxy reverso HTTP → uwsgi |
+| [`conf/mapproxy/mapproxy.yaml`](conf/mapproxy/mapproxy.yaml) | Configuração do MapProxy, com o cache e a origem definidos por variáveis de ambiente |
+| [`conf/mapproxy/seed.yaml`](conf/mapproxy/seed.yaml) | Tarefas de seed e cleanup do cache (ver [Seed do cache](#seed-do-cache)) |
+| [`conf/nginx/nginx.conf`](conf/nginx/nginx.conf) | Proxy reverso HTTP → uwsgi |
 
-Os arquivos em `docker/` são montados nos containers.
+Os arquivos em `conf/` são montados nos containers.
 
 ```yaml
 name: mapproxy
@@ -78,11 +78,11 @@ services:
       MAPPROXY_CACHE_DIR: /var/lib/mapproxy/cache
       UPSTREAM_WMS_URL: https://ows.terrestris.de/osm/service?
     volumes:
-      - ./docker/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
-      - ./docker/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
+      - ./conf/mapproxy/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
+      - ./conf/mapproxy/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
       - cache:/var/lib/mapproxy/cache
     healthcheck:
-      test: ["CMD", "uwsgi", "--socket", "127.0.0.1:8000", "--nagios"]
+      test: ["CMD", "healthcheck"]
       interval: 30s
       timeout: 5s
       start_period: 15s
@@ -108,7 +108,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./conf/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     logging: *logging
 
@@ -132,18 +132,18 @@ O que cada parte faz:
 
 - **`cache-init`** ajusta o dono do volume de cache para o usuário da imagem. Volumes nomeados do Docker são criados como `root`, e o Compose não tem equivalente ao `fsGroup` do Kubernetes.
 - **`read_only: true` + `tmpfs: /tmp`**: a raiz do container fica somente leitura; só o cache e o `/tmp` são graváveis.
-- **`docker/mapproxy.yaml` montado somente leitura** substitui a configuração de exemplo. Como ele existe, o entrypoint não gera nada.
+- **`conf/mapproxy/mapproxy.yaml` montado somente leitura** substitui a configuração de exemplo. Como ele existe, o entrypoint não gera nada.
 - **Variáveis de ambiente** definem o diretório do cache e a URL da origem, sem editar o YAML (ver [Variáveis no `mapproxy.yaml`](#variáveis-no-mapproxyyaml)).
 - **Limites de recursos** batem com os padrões do uWSGI da imagem (2 CPUs, 4 GB; ver [Recursos](#recursos-e-uwsgi)).
 - **Logs**: todos os serviços escrevem em stdout/stderr, e o runtime guarda essa saída. O bloco `x-logging` limita cada serviço a 3 arquivos de 10 MB (`json-file`, aceito pelo Docker e pelo Podman). No Docker, também dá para definir isso para o host inteiro em `/etc/docker/daemon.json`, por exemplo com `"log-driver": "local"`, que já faz rotação e compressão (o Podman não aceita esse driver). No Kubernetes, o kubelet já faz a rotação.
 - **nginx** usa a imagem `nginx-unprivileged` (UID 101, porta 8080), também com rootfs somente leitura, e só recebe tráfego depois que o MapProxy fica saudável.
 
-O [`docker/nginx.conf`](docker/nginx.conf) também traz ajustes de desempenho:
+O [`conf/nginx/nginx.conf`](conf/nginx/nginx.conf) também traz ajustes de desempenho:
 
 | Ajuste | Efeito medido no exemplo |
 |---|---|
 | Cache do nginx (`uwsgi_cache`) para `/wmts/` e `/tms/` | Tiles repetidos são servidos sem passar pelo uWSGI: de ~6.500 para ~18.700 req/s (16 conexões), latência p99 de 5 para 1 ms. O cabeçalho `X-Cache-Status` indica `HIT`/`MISS` |
-| `expires_hours: 24` no `docker/mapproxy.yaml` | Tiles saem com `Cache-Control: public, max-age=86400`, então navegadores e CDNs também fazem cache |
+| `expires_hours: 24` no `conf/mapproxy/mapproxy.yaml` | Tiles saem com `Cache-Control: public, max-age=86400`, então navegadores e CDNs também fazem cache |
 | `gzip` para XML | `GetCapabilities` WMS de 2,5 KB para 0,8 KB; `WMTSCapabilities` de 10,6 KB para 1,6 KB |
 | Buffers maiores (`uwsgi_buffers 16 64k`) | Respostas de até ~1 MB ficam em memória, e o worker do uWSGI é liberado logo |
 | `limit_conn` (20 conexões simultâneas por IP, rejeição com 429) | Um único cliente não consegue ocupar todos os 16 workers |
@@ -158,7 +158,7 @@ Para testar o exemplo com uma imagem construída localmente: `MAPPROXY_IMAGE=map
 
 ### Seed do cache
 
-O [`docker/seed.yaml`](docker/seed.yaml), baseado no exemplo gerado pelo `mapproxy-util`, define duas tarefas:
+O [`conf/mapproxy/seed.yaml`](conf/mapproxy/seed.yaml), baseado no exemplo gerado pelo `mapproxy-util`, define duas tarefas:
 
 | Tarefa | O que faz |
 |---|---|
@@ -250,7 +250,7 @@ location / {
 }
 ```
 
-Para servir **HTTP direto**, sobrescreva `/var/lib/uwsgi/uwsgi.conf` com uma cópia que use `http-socket = :8000` no lugar de `socket`. O healthcheck padrão fala o protocolo uwsgi, então ajuste-o também. Outra opção é manter o `socket` e acrescentar um `http-socket` em outra porta.
+Para servir **HTTP direto**, sobrescreva `/var/lib/uwsgi/uwsgi.conf` com uma cópia que use `http-socket = :8000` no lugar de `socket`. O healthcheck padrão fala o protocolo uwsgi, então substitua também o `/usr/local/bin/healthcheck` (veja [Healthcheck](#healthcheck)). Outra opção é manter o `socket` e acrescentar um `http-socket` em outra porta.
 
 ## Recursos e uWSGI
 
@@ -269,15 +269,55 @@ Para outro tamanho de container, monte seu próprio `uwsgi.conf` em `/var/lib/uw
 
 ## Healthcheck
 
-A imagem define `HEALTHCHECK` com `uwsgi --socket 127.0.0.1:8000 --nagios`, um ping no protocolo uwsgi respondido por um worker. Ele falha se nenhum worker estiver atendendo.
+A imagem traz o comando [`healthcheck`](docker/healthcheck) (em `/usr/local/bin`), que roda `uwsgi --socket 127.0.0.1:8000 --nagios`: um ping no protocolo uwsgi respondido por um worker. Ele falha se nenhum worker estiver atendendo.
 
-- **Podman/Buildah:** o `HEALTHCHECK` só é mantido em imagens construídas com `--format docker`. Os exemplos acima definem o healthcheck no próprio Compose para não depender disso.
-- **Kubernetes:** use uma probe `exec` com o mesmo comando:
+O `HEALTHCHECK` do Dockerfile não é suportado por todos os runtimes: o Podman o ignora em imagens no formato OCI, como as publicadas, e o Kubernetes nunca o usa. Por isso o comando é o mesmo em todos os runtimes, mas cada um precisa declarar o seu healthcheck:
+
+| Runtime | Onde declarar | Quando o check falha |
+|---|---|---|
+| `docker run` | `HEALTHCHECK` da imagem (automático) | só marca `unhealthy` |
+| Docker Compose / `podman compose` | `healthcheck:` no Compose, como no exemplo acima | só marca `unhealthy` (Docker) |
+| Podman | `--health-cmd` ou Quadlet | pode reiniciar com `--health-on-failure` / `HealthOnFailure=` |
+| Kubernetes / OpenShift | probes `exec` | a liveness reinicia o container; a readiness tira o pod do Service |
+
+O Docker e o Compose **não reiniciam** containers `unhealthy`: o healthcheck só marca o estado, e a política de `restart` age só quando o processo termina. Na prática, o uWSGI já mata workers travados (`harakiri`) e o container termina se o processo master morrer.
+
+- **Podman:**
+  ```sh
+  podman run -d --health-cmd healthcheck --health-interval 30s \
+    --health-start-period 15s --health-on-failure restart ndscprm/mapproxy:7.0.0
+  ```
+  No Quadlet (`.container`):
+  ```ini
+  [Container]
+  HealthCmd=healthcheck
+  HealthInterval=30s
+  HealthTimeout=5s
+  HealthStartPeriod=15s
+  HealthRetries=3
+  HealthOnFailure=restart
+  ```
+  O Podman executa os checks por timers do systemd. Sem systemd (como em alguns ambientes de CI), eles não rodam sozinhos; use `podman healthcheck run <container>`.
+- **Kubernetes / OpenShift** (o `podman kube play` também aceita):
   ```yaml
+  startupProbe:
+    exec:
+      command: ["healthcheck"]
+    periodSeconds: 5
+    failureThreshold: 6
   livenessProbe:
     exec:
-      command: ["uwsgi", "--socket", "127.0.0.1:8000", "--nagios"]
+      command: ["healthcheck"]
+    periodSeconds: 30
+    timeoutSeconds: 5
+  readinessProbe:
+    exec:
+      command: ["healthcheck"]
+    periodSeconds: 10
+    timeoutSeconds: 5
   ```
+
+Para mudar a verificação (por exemplo, ao servir HTTP), substitua `/usr/local/bin/healthcheck` por um arquivo montado ou numa imagem derivada; as declarações acima continuam valendo.
 
 ## Construindo a imagem
 
