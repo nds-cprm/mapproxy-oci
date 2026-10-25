@@ -152,6 +152,8 @@ O cache do nginx fica no `/tmp` (tmpfs) do container, com no máximo 512 MB, e s
 
 > **Atenção ao `limit_conn`:** o limite é por endereço IP. Usuários atrás de um mesmo NAT, ou um balanceador ou terminador TLS na frente do nginx, aparecem como um único IP e seriam bloqueados juntos. Nesses casos, aumente o limite ou configure o IP real do cliente (módulo `realip` do nginx).
 
+> **Atenção ao tempo de resposta da origem:** um pedido que leva mais de 60 s é interrompido pelo `harakiri` do uWSGI, e o nginx responde **502** (`upstream prematurely closed connection` no log). Com a origem do exemplo, um GetMap sem cache levou de 30 a 40 s em 25/10/2026, então pedidos maiores ou uma origem mais lenta chegam perto desse limite. O WMS (`/service`) também usa o cache de tiles do MapProxy, então o seed dos níveis baixos (`litoestratigrafia_brasil`, ver [Seed do cache](#seed-do-cache)) reduz bastante esse tempo. Para aumentar o limite, mude juntos o `harakiri` de um `uwsgi.conf` próprio (ver [Recursos e uWSGI](#recursos-e-uwsgi)) e o `uwsgi_read_timeout` do `conf/nginx/nginx.conf`, que fica alguns segundos acima. O timeout do cliente HTTP do MapProxy (`globals.http.client_timeout`, 60 s por padrão) também precisa acompanhar: senão, o pedido à origem falha antes do novo limite.
+
 > A origem do exemplo (a camada de litoestratigrafia 1:1.000.000 do [GeoServer do SGB](https://geoservicos.sgb.gov.br/geoserver/ows)) é só ilustrativa. Respeite os termos de uso dela, ou troque `UPSTREAM_WMS_URL` e a camada pela sua própria fonte de dados.
 
 Para testar o exemplo com uma imagem construída localmente: `MAPPROXY_IMAGE=mapproxy:local docker compose up -d`.
