@@ -32,7 +32,7 @@ services:
     environment:
       # read by mapproxy.yaml (${MAPPROXY_CACHE_DIR}, ${UPSTREAM_WMS_URL})
       MAPPROXY_CACHE_DIR: /var/lib/mapproxy/cache
-      UPSTREAM_WMS_URL: https://ows.terrestris.de/osm/service?
+      UPSTREAM_WMS_URL: https://geoservicos.sgb.gov.br/geoserver/ows?
     volumes:
       - ./conf/mapproxy/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
       - ./conf/mapproxy/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro

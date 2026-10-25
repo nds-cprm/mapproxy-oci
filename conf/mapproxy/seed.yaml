@@ -9,8 +9,8 @@
 
 seeds:
   # pre-generate the tiles of the upper levels over Brazil
-  osm_brasil:
-    caches: [osm_cache]
+  litoestratigrafia_brasil:
+    caches: [litoestratigrafia_cache]
     grids: [webmercator]
     coverages: [brasil]
     levels:
@@ -21,8 +21,8 @@ seeds:
 
 cleanups:
   # remove old tiles of the levels that are not seeded (created on demand)
-  osm_old_tiles:
-    caches: [osm_cache]
+  litoestratigrafia_old_tiles:
+    caches: [litoestratigrafia_cache]
     grids: [webmercator]
     remove_before:
       days: 14

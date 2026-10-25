@@ -18,21 +18,23 @@ services:
     use_grid_names: true
 
 layers:
-  - name: osm
-    title: OpenStreetMap (terrestris)
-    sources: [osm_cache]
+  - name: litoestratigrafia
+    title: Unidades Litoestratigráficas 1:1.000.000 (SGB)
+    sources: [litoestratigrafia_cache]
 
 caches:
-  osm_cache:
+  litoestratigrafia_cache:
     grids: [webmercator]
-    sources: [osm_wms]
+    sources: [sgb_wms]
 
 sources:
-  osm_wms:
+  sgb_wms:
     type: wms
     req:
       url: ${UPSTREAM_WMS_URL}
-      layers: OSM-WMS
+      layers: geosgb:litoestratigrafia_1m
+      # the layer only covers Brazil: keep the rest of the tiles transparent
+      transparent: true
 
 grids:
   webmercator:

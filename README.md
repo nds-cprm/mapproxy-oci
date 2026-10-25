@@ -76,7 +76,7 @@ services:
     environment:
       # read by mapproxy.yaml (${MAPPROXY_CACHE_DIR}, ${UPSTREAM_WMS_URL})
       MAPPROXY_CACHE_DIR: /var/lib/mapproxy/cache
-      UPSTREAM_WMS_URL: https://ows.terrestris.de/osm/service?
+      UPSTREAM_WMS_URL: https://geoservicos.sgb.gov.br/geoserver/ows?
     volumes:
       - ./conf/mapproxy/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
       - ./conf/mapproxy/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
@@ -152,7 +152,7 @@ O cache do nginx fica no `/tmp` (tmpfs) do container, com no máximo 512 MB, e s
 
 > **Atenção ao `limit_conn`:** o limite é por endereço IP. Usuários atrás de um mesmo NAT, ou um balanceador ou terminador TLS na frente do nginx, aparecem como um único IP e seriam bloqueados juntos. Nesses casos, aumente o limite ou configure o IP real do cliente (módulo `realip` do nginx).
 
-> A origem do exemplo (o WMS OpenStreetMap da [terrestris](https://ows.terrestris.de)) é só ilustrativa. Respeite os termos de uso dela, ou troque `UPSTREAM_WMS_URL` e a camada pela sua própria fonte de dados.
+> A origem do exemplo (a camada de litoestratigrafia 1:1.000.000 do [GeoServer do SGB](https://geoservicos.sgb.gov.br/geoserver/ows)) é só ilustrativa. Respeite os termos de uso dela, ou troque `UPSTREAM_WMS_URL` e a camada pela sua própria fonte de dados.
 
 Para testar o exemplo com uma imagem construída localmente: `MAPPROXY_IMAGE=mapproxy:local docker compose up -d`.
 
@@ -162,8 +162,8 @@ O [`conf/mapproxy/seed.yaml`](conf/mapproxy/seed.yaml), baseado no exemplo gerad
 
 | Tarefa | O que faz |
 |---|---|
-| `osm_brasil` (seed) | Gera os níveis 0 a 8 sobre o Brasil (coverage em EPSG:4674) e recria tiles com mais de 30 dias. São ~1.800 tiles (~20 MB) |
-| `osm_old_tiles` (cleanup) | Remove tiles com mais de 14 dias dos níveis 9 em diante, que são gerados sob demanda |
+| `litoestratigrafia_brasil` (seed) | Gera os níveis 0 a 8 sobre o Brasil (coverage em EPSG:4674) e recria tiles com mais de 30 dias. São ~1.800 tiles |
+| `litoestratigrafia_old_tiles` (cleanup) | Remove tiles com mais de 14 dias dos níveis 9 em diante, que são gerados sob demanda |
 
 Para rodar, com o Compose no ar:
 
@@ -176,12 +176,12 @@ docker compose exec mapproxy mapproxy-seed \
 # seed (2 processos simultâneos)
 docker compose exec mapproxy mapproxy-seed \
   -f /var/lib/mapproxy/config/mapproxy.yaml \
-  -s /var/lib/mapproxy/config/seed.yaml -c 2 --seed osm_brasil
+  -s /var/lib/mapproxy/config/seed.yaml -c 2 --seed litoestratigrafia_brasil
 
 # cleanup
 docker compose exec mapproxy mapproxy-seed \
   -f /var/lib/mapproxy/config/mapproxy.yaml \
-  -s /var/lib/mapproxy/config/seed.yaml --cleanup osm_old_tiles
+  -s /var/lib/mapproxy/config/seed.yaml --cleanup litoestratigrafia_old_tiles
 ```
 
 O `mapproxy-seed` roda dentro do container `mapproxy`, com as mesmas variáveis de ambiente (`MAPPROXY_CACHE_DIR`, `UPSTREAM_WMS_URL`) e o mesmo volume de cache. Use `--dry-run` para contar os tiles antes de rodar. Mantenha a concorrência (`-c`) baixa ao semear a partir de servidores de terceiros. Para rodar periodicamente, agende esses comandos no host (cron, timer do systemd) ou, no Kubernetes, num `CronJob` que monte o mesmo volume.
