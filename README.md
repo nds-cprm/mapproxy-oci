@@ -30,19 +30,24 @@ A porta 8000 fala o **protocolo uwsgi**, não HTTP. Para acessar pelo navegador,
 
 ## Produção com Docker Compose
 
-O repositório traz um exemplo completo:
+O diretório [`examples/`](examples) traz dois exemplos completos, cada um com o seu `docker-compose.yaml` e os arquivos montados nos containers em `conf/`:
+
+| Exemplo | Cache de tiles |
+|---|---|
+| [`examples/cache-file/`](examples/cache-file) | Arquivos num volume (descrito abaixo) |
+| [`examples/cache-couchdb/`](examples/cache-couchdb) | Banco CouchDB (ver [Cache no CouchDB](#cache-no-couchdb)) |
+
+Arquivos do `examples/cache-file/`:
 
 | Arquivo | Conteúdo |
 |---|---|
-| [`docker-compose.yaml`](docker-compose.yaml) | MapProxy + nginx, com volume de cache, rootfs somente leitura e limites de recursos |
-| [`conf/mapproxy/mapproxy.yaml`](conf/mapproxy/mapproxy.yaml) | Configuração do MapProxy, com o cache e a origem definidos por variáveis de ambiente |
-| [`conf/mapproxy/seed.yaml`](conf/mapproxy/seed.yaml) | Tarefas de seed e cleanup do cache (ver [Seed do cache](#seed-do-cache)) |
-| [`conf/nginx/nginx.conf`](conf/nginx/nginx.conf) | Proxy reverso HTTP → uwsgi |
-
-Os arquivos em `conf/` são montados nos containers.
+| [`docker-compose.yaml`](examples/cache-file/docker-compose.yaml) | MapProxy + nginx, com volume de cache, rootfs somente leitura e limites de recursos |
+| [`conf/mapproxy/mapproxy.yaml`](examples/cache-file/conf/mapproxy/mapproxy.yaml) | Configuração do MapProxy, com o cache e a origem definidos por variáveis de ambiente |
+| [`conf/mapproxy/seed.yaml`](examples/cache-file/conf/mapproxy/seed.yaml) | Tarefas de seed e cleanup do cache (ver [Seed do cache](#seed-do-cache)) |
+| [`conf/nginx/nginx.conf`](examples/cache-file/conf/nginx/nginx.conf) | Proxy reverso HTTP → uwsgi |
 
 ```yaml
-name: mapproxy
+name: mapproxy-cache-file
 
 # Logs go to stdout/stderr and are stored by the container runtime; without
 # limits the json-file driver grows forever. With Docker, a host-wide default in
@@ -116,9 +121,10 @@ volumes:
   cache:
 ```
 
-Para subir, na raiz do repositório:
+Para subir, no diretório do exemplo:
 
 ```sh
+cd examples/cache-file
 docker compose up -d
 ```
 
@@ -138,7 +144,7 @@ O que cada parte faz:
 - **Logs**: todos os serviços escrevem em stdout/stderr, e o runtime guarda essa saída. O bloco `x-logging` limita cada serviço a 3 arquivos de 10 MB (`json-file`, aceito pelo Docker e pelo Podman). No Docker, também dá para definir isso para o host inteiro em `/etc/docker/daemon.json`, por exemplo com `"log-driver": "local"`, que já faz rotação e compressão (o Podman não aceita esse driver). No Kubernetes, o kubelet já faz a rotação.
 - **nginx** usa a imagem `nginx-unprivileged` (UID 101, porta 8080), também com rootfs somente leitura, e só recebe tráfego depois que o MapProxy fica saudável.
 
-O [`conf/nginx/nginx.conf`](conf/nginx/nginx.conf) também traz ajustes de desempenho:
+O [`conf/nginx/nginx.conf`](examples/cache-file/conf/nginx/nginx.conf) também traz ajustes de desempenho:
 
 | Ajuste | Efeito medido no exemplo |
 |---|---|
@@ -156,11 +162,11 @@ O cache do nginx fica no `/tmp` (tmpfs) do container, com no máximo 512 MB, e s
 
 > A origem do exemplo (a camada de litoestratigrafia 1:1.000.000 do [GeoServer do SGB](https://geoservicos.sgb.gov.br/geoserver/ows)) é só ilustrativa. Respeite os termos de uso dela, ou troque `UPSTREAM_WMS_URL` e a camada pela sua própria fonte de dados.
 
-Para testar o exemplo com uma imagem construída localmente: `MAPPROXY_IMAGE=mapproxy:local docker compose up -d`.
+Para testar o exemplo com uma imagem construída localmente: `MAPPROXY_IMAGE=mapproxy:local docker compose up -d`, no diretório do exemplo.
 
 ### Seed do cache
 
-O [`conf/mapproxy/seed.yaml`](conf/mapproxy/seed.yaml), baseado no exemplo gerado pelo `mapproxy-util`, define duas tarefas:
+O [`conf/mapproxy/seed.yaml`](examples/cache-file/conf/mapproxy/seed.yaml), baseado no exemplo gerado pelo `mapproxy-util`, define duas tarefas:
 
 | Tarefa | O que faz |
 |---|---|
@@ -187,6 +193,31 @@ docker compose exec mapproxy mapproxy-seed \
 ```
 
 O `mapproxy-seed` roda dentro do container `mapproxy`, com as mesmas variáveis de ambiente (`MAPPROXY_CACHE_DIR`, `UPSTREAM_WMS_URL`) e o mesmo volume de cache. Use `--dry-run` para contar os tiles antes de rodar. Mantenha a concorrência (`-c`) baixa ao semear a partir de servidores de terceiros. Para rodar periodicamente, agende esses comandos no host (cron, timer do systemd) ou, no Kubernetes, num `CronJob` que monte o mesmo volume.
+
+### Cache no CouchDB
+
+O [`examples/cache-couchdb/`](examples/cache-couchdb) é uma cópia do exemplo acima com os tiles gravados num [CouchDB](https://couchdb.apache.org) no lugar do volume. Cada tile vira um documento (`<grade>-<z>-<x>-<y>`) com a imagem como anexo e o horário de criação, e o MapProxy cria o banco (`litoestratigrafia_webmercator`) no primeiro uso. As diferenças:
+
+- **Serviço `couchdb`** (`couchdb:3.5`), sem porta publicada no host, com os dados no volume `couchdb-data` e healthcheck em `/_up`. O MapProxy só sobe depois que ele fica saudável.
+- **Senha obrigatória:** o Compose não sobe sem `COUCHDB_PASSWORD`. Defina-a num arquivo `.env` ao lado do `docker-compose.yaml`, que o `.gitignore` do repositório já ignora; `COUCHDB_USER` é `mapproxy` por padrão. O MapProxy recebe as duas variáveis e monta a URL `http://<usuário>:<senha>@couchdb:5984`, então uma senha com caracteres especiais precisa estar codificada para URL.
+- **[`conf/couchdb/local.ini`](examples/cache-couchdb/conf/couchdb/local.ini)** configura um nó só (`single_node = true`, que cria `_users` e `_replicator`, e `[cluster] n = 1`). No primeiro boot, o CouchDB registra um erro `database_does_not_exist` para `_users`, antes de criá-lo; ele não se repete.
+- **O CouchDB roda como o usuário dele (`5984:5984`)** desde o início. Iniciado como root, o entrypoint da imagem tenta ajustar o dono de tudo em `/opt/couchdb`, falha no `local.ini` montado somente leitura e encerra o container sem mensagem nenhuma.
+- **Sem `cache-init` nem volume no MapProxy:** o `MAPPROXY_CACHE_DIR` aponta para o `/tmp` (tmpfs), que só guarda os locks de tiles.
+- **O nginx mantém o `uwsgi_cache`** na frente do MapProxy, como no outro exemplo.
+
+```sh
+cd examples/cache-couchdb
+echo "COUCHDB_PASSWORD=$(openssl rand -hex 16)" > .env
+docker compose up -d
+```
+
+**Cleanup:** num cache em arquivos, o `mapproxy-seed --cleanup` percorre os diretórios. No CouchDB ele não tem como listar o que está gravado e consulta tile por tile da cobertura. Por isso a tarefa `litoestratigrafia_old_tiles` desse exemplo fica limitada ao Brasil e aos níveis 9 a 12, e levou ~6 min em 25/10/2026; cada nível a mais leva 4 vezes mais. Para descartar o cache inteiro, apague o banco e **reinicie o MapProxy**, que só cria o banco uma vez por processo (até lá, os pedidos de tiles respondem 500):
+
+```sh
+docker compose exec couchdb sh -c \
+  'curl -s -u "$COUCHDB_USER:$COUCHDB_PASSWORD" -X DELETE http://127.0.0.1:5984/litoestratigrafia_webmercator'
+docker compose restart mapproxy
+```
 
 ## Configuração
 
@@ -266,7 +297,7 @@ O MapProxy monta as URLs absolutas dos documentos de capabilities (WMS, WMTS e T
 
 O `X-Forwarded-Host` precisa incluir a porta pública, se ela não for a padrão. Sem ele, o MapProxy usa o `Host` recebido, e um proxy externo que reescreve o `Host` para `nginx:8080` gera URLs com esse endereço interno.
 
-Para o subcaminho, no `conf/nginx/nginx.conf`:
+Para o subcaminho, no `conf/nginx/nginx.conf` do exemplo:
 
 ```nginx
 location /mapproxy/ {
@@ -372,7 +403,7 @@ docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
 A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). O workflow lê esse valor quando nenhuma versão é informada no disparo manual, e também no rebuild mensal. Para mudar de versão:
 
 1. Altere `ARG MAPPROXY_VERSION=` no `Dockerfile`, mantendo o formato `X.Y.Z`.
-2. Atualize a tag padrão no `docker-compose.yaml` e os exemplos deste README. Para achar todas as ocorrências: `grep -rn "7\.0\.0" --exclude-dir=.git .`
+2. Atualize a tag padrão nos `docker-compose.yaml` de `examples/` e os exemplos deste README. Para achar todas as ocorrências: `grep -rn "7\.0\.0" --exclude-dir=.git .`
 3. Rode o build localmente e confira se as dependências do `requirements.txt` continuam compatíveis.
 4. Faça o commit e dispare o workflow, ou aguarde o rebuild mensal.
 

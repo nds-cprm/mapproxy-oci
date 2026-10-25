@@ -13,7 +13,8 @@ Idioma: o README, o TODO.md e este arquivo estão em português do Brasil; os co
 | `docker/healthcheck` | Comando de healthcheck único (copiado para `/usr/local/bin`, modo 755), usado pelo `HEALTHCHECK`, pelo Compose e pelos exemplos de Podman/Kubernetes do README |
 | `src/*.envsubst` | `app.py` (entrada WSGI) e `uwsgi.conf`, gerados no build com `envsubst '${MAPPROXY_BASE_DIR}'` apenas |
 | `docker-entrypoint.d/20-mapproxy.sh` | Hook de inicialização, **carregado com `source`** pelo `/docker-entrypoint.sh` da imagem base (depois do `10-enable-nss-wrapper.sh` dela) |
-| `docker-compose.yaml` + `conf/` | Exemplo de produção: `cache-init` (ajusta o dono do volume), `mapproxy`, `nginx-unprivileged` (HTTP :8080 → uwsgi :8000, cache de tiles). Os arquivos de `conf/` (`mapproxy/` e `nginx/`) são montados por bind mount |
+| `examples/cache-file/` | Exemplo de produção com Compose e cache em arquivos: `cache-init` (ajusta o dono do volume), `mapproxy`, `nginx-unprivileged` (HTTP :8080 → uwsgi :8000, cache de tiles). Os arquivos de `conf/` (`mapproxy/` e `nginx/`) são montados por bind mount |
+| `examples/cache-couchdb/` | Cópia do `cache-file` com os tiles num CouchDB (serviço `couchdb`, `conf/couchdb/local.ini`, senha em `.env`, ignorado pelo `.gitignore`); sem `cache-init` nem volume no MapProxy |
 | `.github/workflows/docker-image.yml` | Disparo manual + rebuild mensal (dia 1, 03:00 UTC, `no-cache`); push multi-arch com buildx, análise de CVEs com Docker Scout → SARIF |
 | `TODO.md` | Pendências do projeto, por área e prioridade; marque os itens concluídos |
 
@@ -30,7 +31,8 @@ Idioma: o README, o TODO.md e este arquivo estão em português do Brasil; os co
 ```sh
 docker build -t mapproxy:local .
 docker build --build-arg MAPPROXY_VERSION=X.Y.Z -t mapproxy:local .
-MAPPROXY_IMAGE=mapproxy:local docker compose up -d   # testa o exemplo do Compose com um build local
+cd examples/cache-file && MAPPROXY_IMAGE=mapproxy:local docker compose up -d   # testa um exemplo com um build local
+cd examples/cache-couchdb && echo COUCHDB_PASSWORD=... > .env && MAPPROXY_IMAGE=mapproxy:local docker compose up -d
 # teste rápido: http://localhost:8080/service?SERVICE=WMS&REQUEST=GetCapabilities
 ```
 
@@ -38,14 +40,15 @@ Não há testes unitários nem linters no repositório; valide as mudanças cons
 
 ## Invariantes e o que manter sincronizado
 
-- **Versão do MapProxy**: `ARG MAPPROXY_VERSION=X.Y.Z` no Dockerfile é o único valor padrão; a CI o extrai com `sed -nE 's/^ARG MAPPROXY_VERSION=(.+)$/\1/p'` e valida com `^[0-9]+\.[0-9]+\.[0-9]+$`, então mantenha exatamente esse formato de linha. Ao mudar a versão, atualize também a tag da imagem no `docker-compose.yaml` e no README (`grep -rn "7\.0\.0" --exclude-dir=.git .`).
-- **O README contém uma cópia literal do `docker-compose.yaml`**: qualquer mudança no Compose deve ser replicada no bloco do README. O mesmo vale para os padrões dos build args e a tabela de dimensionamento do uWSGI.
+- **Versão do MapProxy**: `ARG MAPPROXY_VERSION=X.Y.Z` no Dockerfile é o único valor padrão; a CI o extrai com `sed -nE 's/^ARG MAPPROXY_VERSION=(.+)$/\1/p'` e valida com `^[0-9]+\.[0-9]+\.[0-9]+$`, então mantenha exatamente esse formato de linha. Ao mudar a versão, atualize também a tag da imagem nos `docker-compose.yaml` de `examples/` e no README (`grep -rn "7\.0\.0" --exclude-dir=.git .`).
+- **O README contém uma cópia literal do `examples/cache-file/docker-compose.yaml`**: qualquer mudança nesse Compose deve ser replicada no bloco do README. O mesmo vale para os padrões dos build args e a tabela de dimensionamento do uWSGI.
+- **Os dois exemplos são cópias**: o que não é específico do cache (nginx, origem WMS, seed, healthcheck, limites, logging) deve mudar igual em `examples/cache-file/` e `examples/cache-couchdb/`. No CouchDB, o cleanup fica limitado ao Brasil e aos níveis 9–12 (ele consulta tile por tile), e o serviço roda como `5984:5984` (como root, o entrypoint da imagem aborta no `local.ini` montado `:ro`).
 - **Label de título da imagem**: `org.opencontainers.image.title=MapProxy` é definido tanto no Dockerfile quanto no passo de metadata do workflow.
 - **Dimensionamento do uWSGI ↔ recursos**: os padrões do `uwsgi.conf` (16 workers × 256 MB de `reload-on-rss`, limite soft de 2,5 GB) supõem 2 CPUs / 4 GB, iguais ao `deploy.resources.limits` do Compose. O `uwsgi_read_timeout 65s` do nginx acompanha o `harakiri = 60` do uWSGI, que acompanha o `globals.http.client_timeout` do MapProxy (padrão 60 s; nota no README, já que o GetMap na origem do exemplo leva 30–40 s); o `limit_conn 20` se relaciona ao máximo de 16 workers.
 - **Healthcheck** declarado também no Compose de propósito (o Podman descarta o `HEALTHCHECK` em imagens no formato OCI, e o Kubernetes nunca o usa); o comando fica só em `docker/healthcheck`, e o Dockerfile, o Compose e os exemplos do README (Podman, Quadlet, probes) chamam `healthcheck`. Os intervalos (30s/5s/15s/3) se repetem nesses lugares.
 - **O `.dockerignore` é uma allowlist** (`*` e depois `!…`): um arquivo novo copiado pelo Dockerfile precisa ser liberado ali.
 - **`docker-entrypoint.d/*.sh`**: `sh` POSIX, copiado com modo 644 (não executável) para ser carregado com `source` sob `set -e`, de modo que `umask` e `export`s cheguem ao uWSGI; use `exit 1` para abortar a inicialização. Um script executável roda em processo à parte e não tem esse efeito.
-- **`conf/mapproxy/mapproxy.yaml`** usa a substituição de variáveis do MapProxy (`${VAR}`), que não tem sintaxe de valor padrão e só funciona em valores, não em chaves; toda variável usada precisa estar definida no `environment` do Compose.
+- **`conf/mapproxy/mapproxy.yaml`** dos exemplos usa a substituição de variáveis do MapProxy (`${VAR}`), que não tem sintaxe de valor padrão e só funciona em valores, não em chaves; toda variável usada precisa estar definida no `environment` do Compose.
 - `src/app.py.envsubst` deriva do template WSGI do MapProxy; mantenha a atribuição nele e no `NOTICE`.
 - As CVEs conhecidas e aceitas (bibliotecas embutidas no pip) estão documentadas na seção "Segurança" do README; atualize-a se isso mudar.
 

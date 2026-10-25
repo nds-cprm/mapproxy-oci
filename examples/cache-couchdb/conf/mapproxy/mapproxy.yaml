@@ -1,0 +1,50 @@
+# Example configuration. $VAR / ${VAR} are replaced by environment variables
+# (MapProxy has no default-value syntax: every variable used here must be set).
+
+globals:
+  cache:
+    # tiles go to CouchDB; this directory only holds the tile locks
+    base_dir: ${MAPPROXY_CACHE_DIR}
+  tiles:
+    # Cache-Control/Expires headers on tiles (browsers, CDNs, nginx cache)
+    expires_hours: 24
+
+services:
+  wms:
+    srs: ['EPSG:3857', 'EPSG:4326', 'EPSG:4674']
+    md:
+      title: MapProxy
+  wmts:
+  tms:
+    use_grid_names: true
+
+layers:
+  - name: litoestratigrafia
+    title: Unidades Litoestratigráficas 1:1.000.000 (SGB)
+    sources: [litoestratigrafia_cache]
+
+caches:
+  litoestratigrafia_cache:
+    grids: [webmercator]
+    sources: [sgb_wms]
+    # one document per tile (id <grid>-<z>-<x>-<y>, image as attachment, with
+    # a timestamp used by refresh_before/remove_before); the database is
+    # created by MapProxy on first use. A password with special
+    # characters must be URL-encoded here
+    cache:
+      type: couchdb
+      url: http://${COUCHDB_USER}:${COUCHDB_PASSWORD}@couchdb:5984
+      db_name: litoestratigrafia_webmercator
+
+sources:
+  sgb_wms:
+    type: wms
+    req:
+      url: ${UPSTREAM_WMS_URL}
+      layers: geosgb:litoestratigrafia_1m
+      # the layer only covers Brazil: keep the rest of the tiles transparent
+      transparent: true
+
+grids:
+  webmercator:
+    base: GLOBAL_WEBMERCATOR

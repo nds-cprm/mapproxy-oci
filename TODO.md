@@ -31,7 +31,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 ## Exemplo (Compose / nginx)
 
-- [ ] ⚪ **Nível de log do `limit_conn`.** Cada rejeição gera uma linha `[error]` no log do nginx; acrescentar `limit_conn_log_level warn;` ao `conf/nginx/nginx.conf`.
+- [ ] ⚪ **Nível de log do `limit_conn`.** Cada rejeição gera uma linha `[error]` no log do nginx; acrescentar `limit_conn_log_level warn;` ao `conf/nginx/nginx.conf` dos dois exemplos.
 
 ## Verificado em 23/10/2026 (Podman 6.1.4, arm64)
 

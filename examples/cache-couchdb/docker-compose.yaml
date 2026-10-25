@@ -1,4 +1,4 @@
-name: mapproxy
+name: mapproxy-cache-couchdb
 
 # Logs go to stdout/stderr and are stored by the container runtime; without
 # limits the json-file driver grows forever. With Docker, a host-wide default in
@@ -10,33 +10,46 @@ x-logging: &logging
     max-file: "3"
 
 services:
-  # Prepares the cache volume for the image user (UID 1000, GID 0).
-  # Runs once and exits; mapproxy only starts after it succeeds.
-  cache-init:
-    image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
-    user: "0:0"
-    entrypoint: ["sh", "-c", "chown 1000:0 /cache && chmod 2775 /cache"]
+  # Tile cache. Not published on the host: only mapproxy talks to it.
+  # Runs as the image's couchdb user from the start: as root, its entrypoint
+  # chowns /opt/couchdb and aborts (with no message) on the read-only ini.
+  couchdb:
+    image: docker.io/library/couchdb:3.5
+    user: "5984:5984"
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER:-mapproxy}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD, e.g. in an .env file next to this one}
     volumes:
-      - cache:/cache
-    restart: "no"
+      - ./conf/couchdb/local.ini:/opt/couchdb/etc/local.d/10-mapproxy.ini:ro
+      - couchdb-data:/opt/couchdb/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:5984/_up"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
     logging: *logging
 
   mapproxy:
     image: ${MAPPROXY_IMAGE:-docker.io/ndscprm/mapproxy:7.0.0}
     depends_on:
-      cache-init:
-        condition: service_completed_successfully
+      couchdb:
+        condition: service_healthy
     read_only: true
     tmpfs:
       - /tmp
     environment:
-      # read by mapproxy.yaml (${MAPPROXY_CACHE_DIR}, ${UPSTREAM_WMS_URL})
-      MAPPROXY_CACHE_DIR: /var/lib/mapproxy/cache
+      # read by mapproxy.yaml (${MAPPROXY_CACHE_DIR}, ${UPSTREAM_WMS_URL},
+      # ${COUCHDB_USER}, ${COUCHDB_PASSWORD}); the cache directory only holds
+      # tile locks, so the /tmp tmpfs is enough
+      MAPPROXY_CACHE_DIR: /tmp/mapproxy
       UPSTREAM_WMS_URL: https://geoservicos.sgb.gov.br/geoserver/ows?
+      COUCHDB_USER: ${COUCHDB_USER:-mapproxy}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD, e.g. in an .env file next to this one}
     volumes:
       - ./conf/mapproxy/mapproxy.yaml:/var/lib/mapproxy/config/mapproxy.yaml:ro
       - ./conf/mapproxy/seed.yaml:/var/lib/mapproxy/config/seed.yaml:ro
-      - cache:/var/lib/mapproxy/cache
     healthcheck:
       test: ["CMD", "healthcheck"]
       interval: 30s
@@ -69,4 +82,4 @@ services:
     logging: *logging
 
 volumes:
-  cache:
+  couchdb-data:
