@@ -2,8 +2,10 @@
 # Smoke test of the image, run by the CI on the native runner of each architecture (and locally:
 # DOCKER=podman .github/scripts/smoke-test.sh <image>). Starts the container as it runs in production
 # (arbitrary UID, read-only root filesystem with a writable /tmp), waits for the healthcheck (uWSGI ping
-# answered by a worker) and requests the WMS and WMTS capabilities of the configuration in the image
-# through the WSGI application (port 8000 speaks the uwsgi protocol, not HTTP).
+# answered by a worker), checks that the /docker-entrypoint.d scripts ran and requests the WMS and WMTS
+# capabilities of the configuration in the image through the WSGI application (port 8000 speaks the uwsgi
+# protocol, not HTTP). Then starts it with an empty HOME: the base configuration must be created, with
+# nothing written to the stdout of the container command.
 set -eu
 
 IMAGE=${1:?usage: $0 <image>}
@@ -26,8 +28,11 @@ fail() {
 # Podman adds the UID to /etc/passwd by default, so the nss_wrapper of the base image would not be used;
 # --passwd=false keeps the passwd of the image, as Docker and OpenShift do
 RUN_ARGS=
+# Podman also fills a --tmpfs with what the image has at that path, unless notmpcopyup is given
+TMPFS_OPTS=
 if "$DOCKER" --version | grep -qi podman; then
     RUN_ARGS=--passwd=false
+    TMPFS_OPTS=,notmpcopyup
 fi
 
 echo "## container (--user 12345:0, --read-only)"
@@ -76,5 +81,18 @@ def get(path, query, expected):
 get('/service', 'SERVICE=WMS&REQUEST=GetCapabilities', b'<WMS_Capabilities')
 get('/wmts/1.0.0/WMTSCapabilities.xml', '', b'<Capabilities')
 EOF
+
+# without a configuration (empty, writable HOME), 20-mapproxy.sh creates the base one; its messages and
+# those of mapproxy-util go to stderr, as stdout belongs to the container command
+echo "## base configuration created at start, stdout untouched"
+errors=$(mktemp)
+# shellcheck disable=SC2086
+out=$("$DOCKER" run --rm --user 12345:0 --read-only --tmpfs /tmp \
+    --tmpfs "/var/lib/mapproxy/config:mode=0777$TMPFS_OPTS" $RUN_ARGS "$IMAGE" \
+    sh -c 'test -f "$HOME/mapproxy.yaml" && echo ok' 2> "$errors") || :
+created=$(grep -c 'Creating one from template' "$errors") || :
+rm -f "$errors"
+[ "$out" = ok ] || fail "unexpected stdout of the container command: '$out'"
+[ "$created" -gt 0 ] || fail "base configuration not created at start"
 
 echo "OK"
