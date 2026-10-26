@@ -10,10 +10,12 @@ umask 002
 # the default one if it is unset or empty
 export HOME="${HOME:-/var/lib/mapproxy/config}"
 
-# create config files if they do not exist yet
+# create config files if they do not exist yet. Every message goes to stderr
+# (mapproxy-util too, which lists the files it writes): stdout belongs to the
+# container command
 if [ ! -f "$HOME/mapproxy.yaml" ]; then
-    echo "No mapproxy configuration found. Creating one from template."
-    if { [ -d "$HOME" ] && [ ! -w "$HOME" ]; } || ! mapproxy-util create -t base-config "$HOME"; then
+    echo "No mapproxy configuration found. Creating one from template." >&2
+    if { [ -d "$HOME" ] && [ ! -w "$HOME" ]; } || ! mapproxy-util create -t base-config "$HOME" >&2; then
         echo "ERROR: no $HOME/mapproxy.yaml and could not create one (is $HOME read-only?)." >&2
         echo "ERROR: provide a mapproxy.yaml or mount $HOME as a writable volume." >&2
         exit 1
@@ -22,7 +24,7 @@ if [ ! -f "$HOME/mapproxy.yaml" ]; then
     find "$HOME" -user "$(id -u)" -exec chmod g=u {} + || true
     # the base config uses ${server} and $layer as examples, which MapProxy
     # reads as environment variables (hence the "is not set" warnings)
-    echo "NOTE: this base configuration is meant for testing only. Its \${server} and \$layer"
-    echo "NOTE: placeholders are read as environment variables; unset ones trigger UserWarnings."
-    echo "NOTE: in production, provide your own $HOME/mapproxy.yaml (volume or ConfigMap)."
+    echo "NOTE: this base configuration is meant for testing only. Its \${server} and \$layer" >&2
+    echo "NOTE: placeholders are read as environment variables; unset ones trigger UserWarnings." >&2
+    echo "NOTE: in production, provide your own $HOME/mapproxy.yaml (volume or ConfigMap)." >&2
 fi
