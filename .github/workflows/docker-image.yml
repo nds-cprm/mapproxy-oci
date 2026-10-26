@@ -2,13 +2,17 @@ name: Docker Image CI
 
 on:
   # manual, and also dispatched by the CI of gdal-oci after it publishes new
-  # ndscprm/gdal tags (no version input then: the Dockerfile default is built).
+  # ndscprm/gdal tags, with their versions in gdal_version and python_version.
   # There is no scheduled rebuild: a new base image invalidates every layer, so
   # apt and pip fetch the current packages on that build
   workflow_dispatch:
     inputs:
-      mapproxy_version:
-        description: MapProxy version (also used as the image tag). Empty = ARG MAPPROXY_VERSION in the Dockerfile
+      gdal_version:
+        description: ndscprm/gdal GDAL version (base image tags). Empty = ARG GDAL_VERSION in the Dockerfile
+        required: false
+        default: ""
+      python_version:
+        description: ndscprm/gdal Python version (base image tags). Empty = ARG PYTHON_VERSION in the Dockerfile
         required: false
         default: ""
   # pull_request:
@@ -38,10 +42,13 @@ jobs:
     with:
       image: docker.io/ndscprm/mapproxy
       # the Dockerfile (ARG MAPPROXY_VERSION) is the single source of the
-      # default version, also used by the builds started by gdal-oci; an input
-      # version is passed as --build-arg MAPPROXY_VERSION
+      # MapProxy version and of the image tag
       version-arg: MAPPROXY_VERSION
-      version: ${{ inputs.mapproxy_version }}
+      # base image versions given by gdal-oci when it starts this workflow (the tags it has just published);
+      # empty lines are ignored, so without them the ARG defaults of the Dockerfile are built
+      build-args: |
+        ${{ inputs.gdal_version && format('GDAL_VERSION={0}', inputs.gdal_version) || '' }}
+        ${{ inputs.python_version && format('PYTHON_VERSION={0}', inputs.python_version) || '' }}
       # title, version, source and licenses come from the Dockerfile
       labels: |
         org.opencontainers.image.description=Implementação de Imagem de Container OCI para o MapProxy

@@ -218,20 +218,18 @@ docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
 
 ### Atualizando a versão do MapProxy
 
-A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). O workflow lê esse valor quando nenhuma versão é informada no disparo manual, e também nos builds disparados pela imagem base. Para mudar de versão:
+A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). O workflow sempre constrói essa versão, no disparo manual e nos builds disparados pela imagem base. Para mudar de versão:
 
 1. Altere `ARG MAPPROXY_VERSION=` no `Dockerfile`, mantendo o formato `X.Y.Z`.
 2. Atualize a tag padrão nos `docker-compose.yaml` de `examples/` e os exemplos deste README e do [`examples/README.md`](examples/README.md). Para achar todas as ocorrências: `grep -rn "7\.0\.0" --exclude-dir=.git .`
 3. Rode o build localmente e confira se as dependências do `requirements.txt` continuam compatíveis.
 4. Faça o commit e dispare o workflow, ou aguarde o próximo build da imagem base, que dispara este.
 
-Para publicar outra versão sem mudar o padrão, informe-a no campo `mapproxy_version` ao disparar o workflow manualmente.
-
 As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt). O workflow [`docker-image.yml`](.github/workflows/docker-image.yml) chama o [workflow reutilizável do gdal-oci](https://github.com/nds-cprm/gdal-oci#workflow-reutilizável), que constrói as imagens `amd64` e `arm64` em runners nativos, roda o teste de fumaça [`.github/scripts/smoke-test.sh`](.github/scripts/smoke-test.sh) em cada uma, analisa CVEs com o Docker Scout e o Grype e só então cria as tags. O teste também roda localmente: `sh .github/scripts/smoke-test.sh <imagem>` (com Podman: `DOCKER=podman sh .github/scripts/smoke-test.sh <imagem>`).
 
 ## Segurança e atualizações
 
-- **Rebuild junto com a imagem base:** sempre que a `ndscprm/gdal` é republicada (toda semana, se o build e a análise dela passarem), o CI do gdal-oci dispara este workflow, que reconstrói a imagem e republica a mesma tag com as correções de segurança da base e dos pacotes Debian e Python. Uma base nova invalida todas as camadas, então não há build agendado próprio. Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
+- **Rebuild junto com a imagem base:** sempre que a `ndscprm/gdal` é republicada (toda semana, se o build e a análise dela passarem), o CI do gdal-oci dispara este workflow, informando as versões do GDAL e do Python que acabou de publicar, e ele reconstrói a imagem sobre essas tags e republica a mesma tag com as correções de segurança da base e dos pacotes Debian e Python. Uma base nova invalida todas as camadas, então não há build agendado próprio. Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
 - **Análise de vulnerabilidades:** cada build é analisado pelo Docker Scout e pelo Grype, e o resultado aparece na aba *Security* do repositório. O Grype também lê os componentes compilados da imagem base (GDAL, Arrow), que o Scout não enxerga. As vulnerabilidades não impedem a publicação, mas uma falha no teste ou na análise impede.
 
 ### Vulnerabilidades conhecidas e aceitas
