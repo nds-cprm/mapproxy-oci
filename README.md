@@ -78,7 +78,7 @@ A página `/demo/` existe só se o `mapproxy.yaml` tiver `demo:` em `services`. 
 
 - A imagem roda como `1000:0`.
 - **UID arbitrário** (OpenShift, `--user`) é suportado. O GID deve ser `0`.
-- Quando a UID não existe no `/etc/passwd`, o script `10-enable-nss-wrapper.sh` da imagem base a registra via nss_wrapper com o nome `mapproxy` (variável `USER_NAME`), e `whoami` e as consultas de nome funcionam no uWSGI. O registro vale só para os processos iniciados pelo entrypoint; num `docker exec`, o usuário aparece sem nome. O Podman já acrescenta a UID ao `/etc/passwd` do container, e nesse caso o nss_wrapper não é necessário.
+- Quando a UID não existe no `/etc/passwd`, o script `10-enable-nss-wrapper.sh` da imagem base a registra via nss_wrapper com o nome `sgb` (padrão da base; mude com a variável `USER_NAME`), e `whoami` e as consultas de nome funcionam no uWSGI. O registro vale só para os processos iniciados pelo entrypoint; num `docker exec`, o usuário aparece sem nome. O Podman já acrescenta a UID ao `/etc/passwd` do container, e nesse caso o nss_wrapper não é necessário.
 - **Volumes graváveis** (configuração, cache) precisam permitir escrita ao UID do container ou ao grupo `0`:
   - Kubernetes: `securityContext.fsGroup`;
   - Docker/Podman: prepare o volume, como faz o serviço `cache-init` do exemplo [`cache-file`](examples/README.md#cache-file).

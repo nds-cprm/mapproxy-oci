@@ -21,7 +21,7 @@ Idioma: os READMEs (`README.md` e `examples/README.md`), o TODO.md e este arquiv
 
 ## Modelo de execução
 
-- Roda como `1000:0`; UIDs arbitrárias precisam funcionar (OpenShift), então tudo que é gravável deve ser gravável pelo grupo 0 (`umask 002`, `chmod g=u`). `USER_NAME=mapproxy` dá o nome do registro no passwd criado pelo nss_wrapper.
+- Roda como `1000:0`; UIDs arbitrárias precisam funcionar (OpenShift), então tudo que é gravável deve ser gravável pelo grupo 0 (`umask 002`, `chmod g=u`). O nome do registro no passwd criado pelo nss_wrapper é o padrão da base, `sgb` (`USER_NAME` não é definido na imagem), igual nos projetos irmãos (`mapserver-oci`, `pygeoapi-oci`).
 - `HOME=/var/lib/mapproxy/config` **é** o diretório de configuração: o `app.py` lê `$HOME/mapproxy.yaml`. Se ele não existir, o entrypoint gera a `base-config` do MapProxy (só para testes) ou encerra com `exit 1` se `$HOME` for somente leitura.
 - Precisa funcionar com rootfs somente leitura; só o `/tmp` (nss_wrapper, corpos de POST grandes) e os volumes montados são graváveis.
 - A porta 8000 fala o **protocolo uwsgi, não HTTP**. Healthcheck: script `docker/healthcheck` (→ `/usr/local/bin/healthcheck`, roda `uwsgi --socket 127.0.0.1:8000 --nagios`), chamado igual em todos os runtimes.
