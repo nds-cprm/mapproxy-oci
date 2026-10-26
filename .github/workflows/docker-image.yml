@@ -1,22 +1,22 @@
 name: Docker Image CI
 
 on:
+  # manual, and also dispatched by the CI of gdal-oci after it publishes new
+  # ndscprm/gdal tags (no version input then: the Dockerfile default is built).
+  # There is no scheduled rebuild: a new base image invalidates every layer, so
+  # apt and pip fetch the current packages on that build
   workflow_dispatch:
     inputs:
       mapproxy_version:
         description: MapProxy version (also used as the image tag). Empty = ARG MAPPROXY_VERSION in the Dockerfile
         required: false
         default: ""
-  # monthly rebuild (03:00 UTC on day 1), to pick up security fixes of the
-  # base images and of the Debian and Python packages
-  schedule:
-    - cron: "0 3 1 * *"
   # pull_request:
 
 permissions:
   contents: read
 
-# one build at a time (e.g. a manual run and the monthly rebuild), so they never
+# one build at a time (e.g. a manual run and one started by gdal-oci), so they never
 # push the same tags in parallel; a running build is never cancelled
 concurrency:
   group: ${{ github.workflow }}
@@ -38,13 +38,10 @@ jobs:
     with:
       image: docker.io/ndscprm/mapproxy
       # the Dockerfile (ARG MAPPROXY_VERSION) is the single source of the
-      # default version, also used by the scheduled rebuilds; an input version
-      # is passed as --build-arg MAPPROXY_VERSION
+      # default version, also used by the builds started by gdal-oci; an input
+      # version is passed as --build-arg MAPPROXY_VERSION
       version-arg: MAPPROXY_VERSION
       version: ${{ inputs.mapproxy_version }}
-      # scheduled rebuilds ignore the layer cache, so apt and pip fetch the
-      # current packages even when the base image did not change
-      no-cache: ${{ github.event_name == 'schedule' }}
       # title, version, source and licenses come from the Dockerfile
       labels: |
         org.opencontainers.image.description=Implementação de Imagem de Container OCI para o MapProxy

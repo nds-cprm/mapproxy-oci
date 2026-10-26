@@ -16,7 +16,7 @@ Imagem publicada: [`ndscprm/mapproxy`](https://hub.docker.com/r/ndscprm/mapproxy
 | `<versão do MapProxy>` | `7.0.0` | **Móvel**: republicada todo mês com as correções de segurança. Recomendada para uso geral |
 | `<versão>-<AAAAMMDD>` | `7.0.0-20261101` | **Imutável**: cada build mantém a sua. Use para fixar uma imagem exata ou para voltar a uma versão anterior |
 
-A tag com data nunca é sobrescrita: um segundo build no mesmo dia (por exemplo, um disparo manual depois do rebuild agendado) recebe `<versão>-<AAAAMMDD>.2`, depois `.3`, e assim por diante. As imagens têm attestations de SBOM e de provenance (`docker buildx imagetools inspect ndscprm/mapproxy:7.0.0 --format '{{ json .SBOM }}'`).
+A tag com data nunca é sobrescrita: um segundo build no mesmo dia (por exemplo, um disparo manual depois do rebuild disparado pela imagem base) recebe `<versão>-<AAAAMMDD>.2`, depois `.3`, e assim por diante. As imagens têm attestations de SBOM e de provenance (`docker buildx imagetools inspect ndscprm/mapproxy:7.0.0 --format '{{ json .SBOM }}'`).
 
 ## Início rápido
 
@@ -218,12 +218,12 @@ docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
 
 ### Atualizando a versão do MapProxy
 
-A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). O workflow lê esse valor quando nenhuma versão é informada no disparo manual, e também no rebuild mensal. Para mudar de versão:
+A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). O workflow lê esse valor quando nenhuma versão é informada no disparo manual, e também nos builds disparados pela imagem base. Para mudar de versão:
 
 1. Altere `ARG MAPPROXY_VERSION=` no `Dockerfile`, mantendo o formato `X.Y.Z`.
 2. Atualize a tag padrão nos `docker-compose.yaml` de `examples/` e os exemplos deste README e do [`examples/README.md`](examples/README.md). Para achar todas as ocorrências: `grep -rn "7\.0\.0" --exclude-dir=.git .`
 3. Rode o build localmente e confira se as dependências do `requirements.txt` continuam compatíveis.
-4. Faça o commit e dispare o workflow, ou aguarde o rebuild mensal.
+4. Faça o commit e dispare o workflow, ou aguarde o próximo build da imagem base, que dispara este.
 
 Para publicar outra versão sem mudar o padrão, informe-a no campo `mapproxy_version` ao disparar o workflow manualmente.
 
@@ -231,7 +231,7 @@ As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt).
 
 ## Segurança e atualizações
 
-- **Rebuild mensal:** o workflow reconstrói a imagem no dia 1 de cada mês, sem cache de camadas, e republica a mesma tag com as correções de segurança disponíveis nas imagens base e nos pacotes Debian e Python. Além disso, a imagem é reconstruída sempre que a imagem base `ndscprm/gdal` é republicada (o CI do gdal-oci dispara este workflow). Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
+- **Rebuild junto com a imagem base:** sempre que a `ndscprm/gdal` é republicada (toda semana, se o build e a análise dela passarem), o CI do gdal-oci dispara este workflow, que reconstrói a imagem e republica a mesma tag com as correções de segurança da base e dos pacotes Debian e Python. Uma base nova invalida todas as camadas, então não há build agendado próprio. Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
 - **Análise de vulnerabilidades:** cada build é analisado pelo Docker Scout e pelo Grype, e o resultado aparece na aba *Security* do repositório. O Grype também lê os componentes compilados da imagem base (GDAL, Arrow), que o Scout não enxerga. As vulnerabilidades não impedem a publicação, mas uma falha no teste ou na análise impede.
 
 ### Vulnerabilidades conhecidas e aceitas
@@ -246,7 +246,7 @@ O `pip` 26.2.2 (versão verificada em 20/10/2026) traz cópias embutidas (*vendo
 
 **O risco foi aceito**, porque esse código só é executado quando alguém roda o `pip`. O MapProxy e o uWSGI não o usam: o `urllib3` usado pelo MapProxy é outra instalação, já na versão corrigida (2.8.0). Na prática, o risco se limita a quem executar `pip install` dentro do container, o que não faz parte do uso normal da imagem.
 
-Essa decisão será revista quando sair um `pip` com as dependências embutidas atualizadas. O `pip` vem da imagem base `ndscprm/gdal`, então ele é atualizado quando uma nova versão dela trouxer um `pip` novo, o que o rebuild mensal incorpora. Se a sua política de segurança não aceitar esses achados, uma imagem derivada pode remover o `pip`:
+Essa decisão será revista quando sair um `pip` com as dependências embutidas atualizadas. O `pip` vem da imagem base `ndscprm/gdal`, então ele é atualizado quando uma nova versão dela trouxer um `pip` novo, o que o rebuild disparado por ela incorpora. Se a sua política de segurança não aceitar esses achados, uma imagem derivada pode remover o `pip`:
 
 ```dockerfile
 FROM ndscprm/mapproxy:7.0.0
