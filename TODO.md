@@ -10,7 +10,7 @@ Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
 ## CI
 
-- [ ] ⚪ **Dependabot e actions por SHA.** As actions usam tags móveis (`@v7`, `@v4`, `@v1`), e não há `.github/dependabot.yml`. Criar um com os ecossistemas `github-actions`, `docker` e `pip`; opcionalmente, fixar as actions por SHA de commit.
+- [ ] ⚪ **Dependabot e workflow reutilizável por `@main`.** As actions agora ficam no workflow reutilizável do gdal-oci, fixadas por SHA e atualizadas pelo Dependabot de lá, mas o `uses:` aponta para `@main`: um commit no gdal-oci muda o CI daqui sem revisão. Quando houver uma tag do workflow, fixar o `uses:` nela (ou no SHA) e criar um `.github/dependabot.yml` com os ecossistemas `github-actions`, `docker` e `pip`.
 
 ## Build
 

@@ -16,7 +16,7 @@ Imagem publicada: [`ndscprm/mapproxy`](https://hub.docker.com/r/ndscprm/mapproxy
 | `<versão do MapProxy>` | `7.0.0` | **Móvel**: republicada todo mês com as correções de segurança. Recomendada para uso geral |
 | `<versão>-<AAAAMMDD>` | `7.0.0-20261101` | **Imutável**: cada build mantém a sua. Use para fixar uma imagem exata ou para voltar a uma versão anterior |
 
-A tag com data só muda se o workflow rodar duas vezes no mesmo dia (por exemplo, um disparo manual depois do rebuild agendado). Para garantir uma imagem exata, fixe também o digest (`ndscprm/mapproxy@sha256:…`).
+A tag com data nunca é sobrescrita: um segundo build no mesmo dia (por exemplo, um disparo manual depois do rebuild agendado) recebe `<versão>-<AAAAMMDD>.2`, depois `.3`, e assim por diante. As imagens têm attestations de SBOM e de provenance (`docker buildx imagetools inspect ndscprm/mapproxy:7.0.0 --format '{{ json .SBOM }}'`).
 
 ## Início rápido
 
@@ -227,12 +227,12 @@ A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). 
 
 Para publicar outra versão sem mudar o padrão, informe-a no campo `mapproxy_version` ao disparar o workflow manualmente.
 
-As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt). O workflow [`docker-image.yml`](.github/workflows/docker-image.yml) constrói e publica as imagens `amd64` e `arm64` e analisa CVEs com o Docker Scout.
+As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt). O workflow [`docker-image.yml`](.github/workflows/docker-image.yml) chama o [workflow reutilizável do gdal-oci](https://github.com/nds-cprm/gdal-oci#workflow-reutilizável), que constrói as imagens `amd64` e `arm64` em runners nativos, roda o teste de fumaça [`.github/scripts/smoke-test.sh`](.github/scripts/smoke-test.sh) em cada uma, analisa CVEs com o Docker Scout e o Grype e só então cria as tags. O teste também roda localmente: `sh .github/scripts/smoke-test.sh <imagem>` (com Podman: `DOCKER=podman sh .github/scripts/smoke-test.sh <imagem>`).
 
 ## Segurança e atualizações
 
 - **Rebuild mensal:** o workflow reconstrói a imagem no dia 1 de cada mês, sem cache de camadas, e republica a mesma tag com as correções de segurança disponíveis nas imagens base e nos pacotes Debian e Python. Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
-- **Análise de vulnerabilidades:** cada build é analisado pelo Docker Scout, e o resultado aparece na aba *Security* do repositório.
+- **Análise de vulnerabilidades:** cada build é analisado pelo Docker Scout e pelo Grype, e o resultado aparece na aba *Security* do repositório. O Grype também lê os componentes compilados da imagem base (GDAL, Arrow), que o Scout não enxerga. As vulnerabilidades não impedem a publicação, mas uma falha no teste ou na análise impede.
 
 ### Vulnerabilidades conhecidas e aceitas
 

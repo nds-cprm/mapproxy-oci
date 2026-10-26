@@ -15,7 +15,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 # one build at a time (e.g. a manual run and the monthly rebuild), so they never
 # push the same tags in parallel; a running build is never cancelled
@@ -23,83 +22,35 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
-env:
-  IMAGE: ndscprm/mapproxy
-
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
+  # build, test, scan and tags in the reusable workflow of the base image (README
+  # of gdal-oci, "Workflow reutilizável"): native runners per architecture, push
+  # by digest, tags only after the tests and scans of both architectures
+  image:
+    uses: nds-cprm/gdal-oci/.github/workflows/oci-image.yml@main
+    permissions:
+      contents: read
+      # upload of the SARIF reports to code scanning
+      security-events: write
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    with:
+      image: docker.io/ndscprm/mapproxy
       # the Dockerfile (ARG MAPPROXY_VERSION) is the single source of the
-      # default version, also used by the scheduled rebuilds
-      - name: Resolve MapProxy version
-        env:
-          INPUT_VERSION: ${{ inputs.mapproxy_version }}
-        run: |
-          version="${INPUT_VERSION:-$(sed -nE 's/^ARG MAPPROXY_VERSION=(.+)$/\1/p' Dockerfile)}"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::invalid MapProxy version: '$version'"
-            exit 1
-          fi
-          echo "MAPPROXY_VERSION=$version" >> "$GITHUB_ENV"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Login to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE }}
-          # <version>: moving tag, rebuilt every month with security fixes
-          # <version>-YYYYMMDD: immutable tag of each build, for pinning and rollback
-          tags: |
-            type=raw,value=${{ env.MAPPROXY_VERSION }}
-            type=raw,value=${{ env.MAPPROXY_VERSION }}-{{date 'YYYYMMDD'}}
-          # overrides the default title (repository name); keep in sync with
-          # the Dockerfile. description and url come from the repository
-          labels: org.opencontainers.image.title=MapProxy
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          build-args: MAPPROXY_VERSION=${{ env.MAPPROXY_VERSION }}
-          pull: true
-          # scheduled rebuilds ignore the layer cache, so apt and pip fetch
-          # the current packages even when the base image did not change
-          no-cache: ${{ github.event_name == 'schedule' }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Analyze for critical and high CVEs
-        if: github.event_name != 'pull_request'
-        uses: docker/scout-action@v1
-        with:
-          command: cves
-          image: ${{ env.IMAGE }}:${{ env.MAPPROXY_VERSION }}
-          sarif-file: sarif.output.json
-          summary: true
-
-      - name: Upload SARIF result
-        if: always() && hashFiles('sarif.output.json') != ''
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: sarif.output.json
+      # default version, also used by the scheduled rebuilds; an input version
+      # is passed as --build-arg MAPPROXY_VERSION
+      version-arg: MAPPROXY_VERSION
+      version: ${{ inputs.mapproxy_version }}
+      # scheduled rebuilds ignore the layer cache, so apt and pip fetch the
+      # current packages even when the base image did not change
+      no-cache: ${{ github.event_name == 'schedule' }}
+      # title, version, source and licenses come from the Dockerfile
+      labels: |
+        org.opencontainers.image.description=Implementação de Imagem de Container OCI para o MapProxy
+        org.opencontainers.image.url=https://github.com/nds-cprm/mapproxy-oci
+      variants: |
+        [
+          {"name": "release", "target": "release", "tag": "{version}", "scan": true,
+           "test": "sh .github/scripts/smoke-test.sh \"$IMAGE_REF\""}
+        ]

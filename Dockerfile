@@ -47,8 +47,8 @@ FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION} AS release
 ARG MAPPROXY_BASE_DIR
 ARG MAPPROXY_VERSION
 
-# description and url are set by the CI (docker/metadata-action); the title is
-# repeated there to override the default one, so keep both in sync
+# description and url are set by the CI (labels input of the workflow); created,
+# revision and source are also set there, for each build
 LABEL org.opencontainers.image.title="MapProxy" \
       org.opencontainers.image.version="${MAPPROXY_VERSION}" \
       org.opencontainers.image.source="https://github.com/nds-cprm/mapproxy-oci" \
