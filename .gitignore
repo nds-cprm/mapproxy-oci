@@ -1,2 +1,3 @@
 # Compose secrets of the examples (e.g. COUCHDB_PASSWORD)
 .env
+.DS_Store
