@@ -23,8 +23,16 @@ fail() {
 
 [ "$("$DOCKER" image inspect "$IMAGE" --format '{{.Config.User}}')" = 1000:0 ] || fail "image user is not 1000:0"
 
+# Podman adds the UID to /etc/passwd by default, so the nss_wrapper of the base image would not be used;
+# --passwd=false keeps the passwd of the image, as Docker and OpenShift do
+RUN_ARGS=
+if "$DOCKER" --version | grep -qi podman; then
+    RUN_ARGS=--passwd=false
+fi
+
 echo "## container (--user 12345:0, --read-only)"
-"$DOCKER" run -d --name "$NAME" --user 12345:0 --read-only --tmpfs /tmp "$IMAGE" > /dev/null
+# shellcheck disable=SC2086
+"$DOCKER" run -d --name "$NAME" --user 12345:0 --read-only --tmpfs /tmp $RUN_ARGS "$IMAGE" > /dev/null
 healthy=
 for _ in $(seq 30); do
     if "$DOCKER" exec "$NAME" healthcheck > /dev/null 2>&1; then
@@ -35,6 +43,16 @@ for _ in $(seq 30); do
 done
 [ -n "$healthy" ] || fail "healthcheck did not pass within 60 s"
 "$DOCKER" exec "$NAME" healthcheck
+
+# the /docker-entrypoint.d scripts ran (none of them is skipped silently, e.g. if the directory were not
+# readable by the UID): checked on PID 1 (uWSGI), as "docker exec" does not go through the entrypoint.
+# Not through /proc/1/environ, which uWSGI overwrites when it renames its processes (auto-procname)
+echo "## entrypoint scripts"
+"$DOCKER" exec "$NAME" sh -c '
+    grep -q libnss_wrapper /proc/1/maps && grep -q "^sgb:x:12345:0:" /tmp/nss_wrapper.*/passwd' \
+    || fail "nss_wrapper (10-enable-nss-wrapper.sh) not active in uWSGI"
+"$DOCKER" exec "$NAME" grep -q '^Umask:[[:space:]]*0002$' /proc/1/status \
+    || fail "uWSGI umask is not 002 (20-mapproxy.sh)"
 
 echo "## WSGI requests"
 "$DOCKER" exec -i "$NAME" python3 - << 'EOF' || fail "WSGI requests"
