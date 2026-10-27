@@ -196,7 +196,7 @@ O [`cache-couchdb/`](cache-couchdb) é uma cópia do [cache-file](#cache-file) c
 - **[`conf/couchdb/local.ini`](cache-couchdb/conf/couchdb/local.ini)** configura um nó só (`single_node = true`, que cria `_users` e `_replicator`, e `[cluster] n = 1`). No primeiro boot, o CouchDB registra um erro `database_does_not_exist` para `_users`, antes de criá-lo; ele não se repete.
 - **O CouchDB roda como o usuário dele (`5984:5984`)** desde o início. Iniciado como root, o entrypoint da imagem tenta ajustar o dono de tudo em `/opt/couchdb`, falha no `local.ini` montado somente leitura e encerra o container sem mensagem nenhuma.
 - **Sem `cache-init` nem volume no MapProxy:** o `MAPPROXY_CACHE_DIR` aponta para o `/tmp` (tmpfs), que só guarda os locks de tiles.
-- **O nginx usa o próprio cache de tiles** (`uwsgi_cache`, no `/tmp`, até 512 MB, perdido ao recriar o container) para `/wmts/` e `/tms/`, porque aqui não há arquivos para servir direto do disco. O cabeçalho `X-Cache-Status` indica `HIT`/`MISS`, e `docker compose restart nginx` esvazia esse cache.
+- **O nginx usa o próprio cache de tiles** (`uwsgi_cache`, no `/tmp`, até 512 MB, perdido ao recriar o container) para `/wmts/` e `/tms/`, porque aqui não há arquivos para servir direto do disco. Cada tile fica até 24 h nesse cache, conforme o `Cache-Control` do MapProxy (`expires_hours: 24`), que tem prioridade sobre o `uwsgi_cache_valid`; um tile sem acesso por 1 h sai antes (`inactive=1h`). O cabeçalho `X-Cache-Status` indica `HIT`/`MISS`, e `docker compose restart nginx` esvazia esse cache.
 
 ```sh
 cd cache-couchdb
