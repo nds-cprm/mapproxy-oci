@@ -147,6 +147,8 @@ caches:
       directory: ${MAPPROXY_CACHE_DIR}/minha_camada/webmercator
 ```
 
+> **Nota sobre a origem da grade:** o cache em arquivos grava as linhas de tiles na origem da grade, e o WMTS sempre as numera a partir do canto superior esquerdo (`nw`). A convenção acima só vale para grades com origem `nw`, como a `GLOBAL_WEBMERCATOR` do exemplo. Com uma grade de origem `sw`, como a `GLOBAL_GEODETIC`, a `GLOBAL_MERCATOR` ou uma grade própria sem `origin` (o padrão é `sw`), o nginx encontra o arquivo da linha espelhada e entrega o tile errado, sem erro. Para essas grades, defina `origin: nw` na grade ou deixe a camada fora da convenção, para que ela seja servida pelo MapProxy.
+
 Mudar o layout de um cache existente não migra os tiles: o diretório antigo (no layout padrão, `<cache>_<grade>/`) fica órfão no volume e pode ser apagado; rode o seed de novo.
 
 No Kubernetes, o nginx só consegue ler o volume de cache se estiver no mesmo pod que o MapProxy (sidecar) ou se o volume for `ReadWriteMany`.
