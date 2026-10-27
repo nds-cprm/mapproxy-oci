@@ -1,6 +1,6 @@
 # TODO
 
-Pendências do projeto, levantadas em 20/10/2026 e revisadas em 25/10/2026 (imagem base `ndscprm/gdal:3.12.4-py3.12`). Os itens concluídos são removidos; o histórico fica no git.
+Pendências do projeto, levantadas em 20/10/2026 e revisadas em 27/10/2026 (imagem base `ndscprm/gdal:3.12.4-py3.12`). Os itens concluídos são removidos; o histórico fica no git.
 
 Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 

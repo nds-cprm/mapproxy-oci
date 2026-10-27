@@ -13,7 +13,7 @@ Imagem publicada: [`ndscprm/mapproxy`](https://hub.docker.com/r/ndscprm/mapproxy
 
 | Tag | Exemplo | Comportamento |
 |---|---|---|
-| `<versão do MapProxy>` | `7.0.0` | **Móvel**: republicada todo mês com as correções de segurança. Recomendada para uso geral |
+| `<versão do MapProxy>` | `7.0.0` | **Móvel**: republicada a cada rebuild da imagem base (ver [Segurança e atualizações](#segurança-e-atualizações)), com as correções de segurança. Recomendada para uso geral |
 | `<versão>-<AAAAMMDD>` | `7.0.0-20261101` | **Imutável**: cada build mantém a sua. Use para fixar uma imagem exata ou para voltar a uma versão anterior |
 
 A tag com data nunca é sobrescrita: um segundo build no mesmo dia (por exemplo, um disparo manual depois do rebuild disparado pela imagem base) recebe `<versão>-<AAAAMMDD>.2`, depois `.3`, e assim por diante. As imagens têm attestations de SBOM e de provenance (`docker buildx imagetools inspect ndscprm/mapproxy:7.0.0 --format '{{ json .SBOM }}'`).
