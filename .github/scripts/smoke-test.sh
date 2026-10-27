@@ -1,11 +1,12 @@
 #!/bin/sh
 # Smoke test of the image, run by the CI on the native runner of each architecture (and locally:
 # DOCKER=podman .github/scripts/smoke-test.sh <image>). Starts the container as it runs in production
-# (arbitrary UID, read-only root filesystem with a writable /tmp), waits for the healthcheck (uWSGI ping
-# answered by a worker), checks that the /docker-entrypoint.d scripts ran and requests the WMS and WMTS
-# capabilities of the configuration in the image through the WSGI application (port 8000 speaks the uwsgi
-# protocol, not HTTP). Then starts it with an empty HOME: the base configuration must be created, with
-# nothing written to the stdout of the container command.
+# (arbitrary UID, read-only root filesystem with a writable /tmp) with an empty, writable HOME, as the image
+# has no configuration, waits for the healthcheck (uWSGI ping answered by a worker), checks that the
+# /docker-entrypoint.d scripts ran and requests the WMS and WMTS capabilities of the base configuration they
+# created through the WSGI application (port 8000 speaks the uwsgi protocol, not HTTP). Then checks that the
+# base configuration is created with nothing written to the stdout of the container command, and that the
+# container does not start with no configuration and a read-only HOME.
 set -eu
 
 IMAGE=${1:?usage: $0 <image>}
@@ -35,9 +36,10 @@ if "$DOCKER" --version | grep -qi podman; then
     TMPFS_OPTS=,notmpcopyup
 fi
 
-echo "## container (--user 12345:0, --read-only)"
+echo "## container (--user 12345:0, --read-only, empty writable HOME)"
 # shellcheck disable=SC2086
-"$DOCKER" run -d --name "$NAME" --user 12345:0 --read-only --tmpfs /tmp $RUN_ARGS "$IMAGE" > /dev/null
+"$DOCKER" run -d --name "$NAME" --user 12345:0 --read-only --tmpfs /tmp \
+    --tmpfs "/var/lib/mapproxy/config:mode=0777$TMPFS_OPTS" $RUN_ARGS "$IMAGE" > /dev/null
 healthy=
 for _ in $(seq 30); do
     if "$DOCKER" exec "$NAME" healthcheck > /dev/null 2>&1; then
@@ -94,5 +96,17 @@ created=$(grep -c 'Creating one from template' "$errors") || :
 rm -f "$errors"
 [ "$out" = ok ] || fail "unexpected stdout of the container command: '$out'"
 [ "$created" -gt 0 ] || fail "base configuration not created at start"
+
+# no configuration and a read-only HOME: 20-mapproxy.sh stops the start with an error
+echo "## no configuration, read-only HOME: start aborted"
+errors=$(mktemp)
+# shellcheck disable=SC2086
+if "$DOCKER" run --rm --user 12345:0 --read-only --tmpfs /tmp $RUN_ARGS "$IMAGE" true 2> "$errors"; then
+    rm -f "$errors"
+    fail "container started with no configuration and a read-only HOME"
+fi
+aborted=$(grep -c 'could not create one' "$errors") || :
+rm -f "$errors"
+[ "$aborted" -gt 0 ] || fail "no error message for a read-only HOME without configuration"
 
 echo "OK"

@@ -21,25 +21,22 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # wheels of MapProxy and its dependencies (uwsgi and any other sdist are built
-# here, with the compilers); the release stage installs the same wheels. They
-# are also installed here, as mapproxy-util creates the base config below
+# here, with the compilers); the release stage installs the same wheels
 RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
     pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
-        -r /tmp/requirements.txt -c /tmp/requirements.txt \
-        "MapProxy==${MAPPROXY_VERSION}" && \
-    pip install --no-cache-dir --no-index --find-links /wheels \
         -r /tmp/requirements.txt -c /tmp/requirements.txt \
         "MapProxy==${MAPPROXY_VERSION}"
 
 COPY src/ ./
 
+# config/ is left empty: without a mapproxy.yaml, 20-mapproxy.sh creates the
+# base config (for testing only) at start, or stops if HOME is read-only
 RUN mkdir config && \
     envsubst '${MAPPROXY_BASE_DIR}' < uwsgi.conf.envsubst > uwsgi.conf && \
     envsubst '${MAPPROXY_BASE_DIR}' < app.py.envsubst > app.py && \
     rm -rf *.envsubst && \
     chmod 644 app.py uwsgi.conf && \
-    mapproxy-util create -t base-config ./config && \
-    chmod -R g=u ./config
+    chmod g=u ./config
 
 
 FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION} AS release

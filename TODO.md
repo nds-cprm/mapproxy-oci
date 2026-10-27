@@ -4,10 +4,6 @@ Pendências do projeto, levantadas em 20/10/2026 e revisadas em 27/10/2026 (imag
 
 Legenda: 🔴 alta · 🟠 média · ⚪ baixa
 
-## Imagem
-
-- [ ] ⚪ **Configuração de exemplo gerada no build.** O `mapproxy-util create` do Dockerfile já deixa um `mapproxy.yaml` na imagem, então num `docker run` sem config o entrypoint não gera nada e não imprime as notas `NOTE:` de "só para testes". O README diz que o container gera a configuração na inicialização. Ou remover a geração do build, ou ajustar o texto.
-
 ## CI
 
 - [ ] ⚪ **Dependabot e workflow reutilizável por `@main`.** As actions agora ficam no workflow reutilizável do gdal-oci, fixadas por SHA e atualizadas pelo Dependabot de lá, mas o `uses:` aponta para `@main`: um commit no gdal-oci muda o CI daqui sem revisão. Quando houver uma tag do workflow, fixar o `uses:` nela (ou no SHA) e criar um `.github/dependabot.yml` com os ecossistemas `github-actions`, `docker` e `pip`.
