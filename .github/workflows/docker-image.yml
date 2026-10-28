@@ -2,17 +2,25 @@ name: Docker Image CI
 
 on:
   # manual, and also dispatched by the CI of gdal-oci after it publishes new
-  # ndscprm/gdal tags, with their versions in gdal_version and python_version.
+  # ndscprm/gdal images, with their full names.
   # There is no scheduled rebuild: a new base image invalidates every layer, so
   # apt and pip fetch the current packages on that build
   workflow_dispatch:
+    # full names of the ndscprm/gdal images to build on (the CI of gdal-oci sends the dated tags it has just
+    # published, pinned by digest: <tag>-<YYYYMMDD>@sha256:...). Every derived image declares the same
+    # three inputs, so gdal-oci sends the same set to all of them; each uses those its Dockerfile needs.
+    # Empty = the ARG default of the Dockerfile (a moving tag)
     inputs:
-      gdal_version:
-        description: ndscprm/gdal GDAL version (base image tags). Empty = ARG GDAL_VERSION in the Dockerfile
+      image_devel:
+        description: ndscprm/gdal devel image (GDAL_IMAGE_DEVEL). Empty = Dockerfile default
         required: false
         default: ""
-      python_version:
-        description: ndscprm/gdal Python version (base image tags). Empty = ARG PYTHON_VERSION in the Dockerfile
+      image_py:
+        description: ndscprm/gdal image with Python (GDAL_IMAGE_PY). Empty = Dockerfile default
+        required: false
+        default: ""
+      image_nopy:
+        description: ndscprm/gdal image without Python (GDAL_IMAGE_NOPY). Empty = Dockerfile default
         required: false
         default: ""
   # pull_request:
@@ -27,10 +35,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # the inputs must name ndscprm/gdal images: a manual run could otherwise build on any image
+  check:
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - env:
+          IMAGES: ${{ inputs.image_devel }} ${{ inputs.image_py }} ${{ inputs.image_nopy }}
+        run: |
+          for image in $IMAGES; do
+              case $image in
+                  docker.io/ndscprm/gdal:*) echo "base image: $image" ;;
+                  *)
+                      echo "::error::not a docker.io/ndscprm/gdal image: $image"
+                      exit 1
+                      ;;
+              esac
+          done
+
   # build, test, scan and tags in the reusable workflow of the base image (README
   # of gdal-oci, "Workflow reutilizável"): native runners per architecture, push
   # by digest, tags only after the tests and scans of both architectures
   image:
+    needs: check
     uses: nds-cprm/gdal-oci/.github/workflows/oci-image.yml@main
     permissions:
       contents: read
@@ -44,11 +71,11 @@ jobs:
       # the Dockerfile (ARG MAPPROXY_VERSION) is the single source of the
       # MapProxy version and of the image tag
       version-arg: MAPPROXY_VERSION
-      # base image versions given by gdal-oci when it starts this workflow (the tags it has just published);
+      # base images given by gdal-oci when it starts this workflow (the images it has just published);
       # empty lines are ignored, so without them the ARG defaults of the Dockerfile are built
       build-args: |
-        ${{ inputs.gdal_version && format('GDAL_VERSION={0}', inputs.gdal_version) || '' }}
-        ${{ inputs.python_version && format('PYTHON_VERSION={0}', inputs.python_version) || '' }}
+        ${{ inputs.image_devel && format('GDAL_IMAGE_DEVEL={0}', inputs.image_devel) || '' }}
+        ${{ inputs.image_py && format('GDAL_IMAGE_PY={0}', inputs.image_py) || '' }}
       # title, version, source and licenses come from the Dockerfile
       labels: |
         org.opencontainers.image.description=Implementação de Imagem de Container OCI para o MapProxy

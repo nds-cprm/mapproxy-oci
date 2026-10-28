@@ -2,7 +2,7 @@
 
 Imagem de container OCI para o [MapProxy](https://mapproxy.org), servido pelo uWSGI.
 
-- MapProxy 7 sobre Python 3.12, GDAL 3.12 e Debian trixie (imagem base [`ndscprm/gdal`](https://hub.docker.com/r/ndscprm/gdal): `3.12.4-py3.12`, e `3.12.4-py3.12-devel` no estágio de build)
+- MapProxy 7 sobre Python 3.12, GDAL 3.12 e Debian trixie (imagem base [`ndscprm/gdal`](https://hub.docker.com/r/ndscprm/gdal): `3.12.4-py3.12`, e `3.12.4-py3.12-devel` no estágio de build; no CI, as tags datadas e o digest do build que o gdal-oci acabou de publicar)
 - Roda como usuário não-root (`1000:0`) e aceita UID arbitrário (OpenShift)
 - Funciona com sistema de arquivos raiz somente leitura
 - Configuração por `mapproxy.yaml`, variáveis de ambiente e volumes
@@ -207,13 +207,18 @@ Para mudar a verificação (por exemplo, ao servir HTTP), substitua `/usr/local/
 docker build -t mapproxy:local .
 # outra versão do MapProxy:
 docker build --build-arg MAPPROXY_VERSION=7.0.0 -t mapproxy:local .
+# sobre um build fixo da imagem base (tag datada, opcionalmente com o digest), como no CI:
+docker build \
+    --build-arg GDAL_IMAGE_DEVEL=docker.io/ndscprm/gdal:3.12.4-py3.12-devel-20261026 \
+    --build-arg GDAL_IMAGE_PY=docker.io/ndscprm/gdal:3.12.4-py3.12-20261026 \
+    -t mapproxy:local .
 ```
 
 | Build arg | Padrão |
 |---|---|
 | `MAPPROXY_VERSION` | `7.0.0` |
-| `GDAL_VERSION` | `3.12.4` |
-| `PYTHON_VERSION` | `3.12` |
+| `GDAL_IMAGE_DEVEL` | `docker.io/ndscprm/gdal:3.12.4-py3.12-devel` (estágio de build) |
+| `GDAL_IMAGE_PY` | `docker.io/ndscprm/gdal:3.12.4-py3.12` (imagem final) |
 | `MAPPROXY_BASE_DIR` | `/var/lib/mapproxy` |
 
 ### Atualizando a versão do MapProxy
@@ -229,7 +234,7 @@ As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt).
 
 ## Segurança e atualizações
 
-- **Rebuild junto com a imagem base:** sempre que a `ndscprm/gdal` é republicada (toda semana, se o build e a análise dela passarem), o CI do gdal-oci dispara este workflow, informando as versões do GDAL e do Python que acabou de publicar, e ele reconstrói a imagem sobre essas tags e republica a mesma tag com as correções de segurança da base e dos pacotes Debian e Python. Uma base nova invalida todas as camadas, então não há build agendado próprio. Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
+- **Rebuild junto com a imagem base:** sempre que a `ndscprm/gdal` é republicada (toda semana, se o build e a análise dela passarem), o CI do gdal-oci dispara este workflow, informando o nome completo das imagens que acabou de publicar (tag datada e digest), e ele reconstrói a imagem sobre elas e republica a mesma tag com as correções de segurança da base e dos pacotes Debian e Python. Uma base nova invalida todas as camadas, então não há build agendado próprio. Para receber as atualizações, rode `docker compose pull && docker compose up -d` (ou o equivalente no seu ambiente).
 - **Análise de vulnerabilidades:** cada build é analisado pelo Docker Scout e pelo Grype, e o resultado aparece na aba *Security* do repositório. O Grype também lê os componentes compilados da imagem base (GDAL, Arrow), que o Scout não enxerga. As vulnerabilidades não impedem a publicação, mas uma falha no teste ou na análise impede.
 
 ### Vulnerabilidades conhecidas e aceitas

@@ -1,13 +1,17 @@
-# base images: ndscprm/gdal (Debian trixie + official Python + GDAL in /opt/geosgb)
-ARG GDAL_VERSION=3.12.4
-ARG PYTHON_VERSION=3.12
+# base images: ndscprm/gdal (Debian trixie + official Python + GDAL in /opt/geosgb),
+# by full name. The defaults are the moving tags, rebuilt in place every week, for
+# local builds; the CI passes the exact images the CI of gdal-oci has just
+# published (dated tag and digest: <tag>-<YYYYMMDD>@sha256:...), all of the same
+# build of the base
+ARG GDAL_IMAGE_DEVEL=docker.io/ndscprm/gdal:3.12.4-py3.12-devel
+ARG GDAL_IMAGE_PY=docker.io/ndscprm/gdal:3.12.4-py3.12
 
 # default MapProxy version, also read by the CI workflow (keep this format)
 ARG MAPPROXY_VERSION=7.0.0
 ARG MAPPROXY_BASE_DIR=/var/lib/mapproxy
 
 
-FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION}-devel AS build
+FROM ${GDAL_IMAGE_DEVEL} AS build
 
 ARG MAPPROXY_BASE_DIR
 ARG MAPPROXY_VERSION
@@ -39,17 +43,21 @@ RUN mkdir config && \
     chmod g=u ./config
 
 
-FROM docker.io/ndscprm/gdal:${GDAL_VERSION}-py${PYTHON_VERSION} AS release
+FROM ${GDAL_IMAGE_PY} AS release
 
 ARG MAPPROXY_BASE_DIR
 ARG MAPPROXY_VERSION
+# the base this image was built on: its tags (<version>, and the dated one) do
+# not say
+ARG GDAL_IMAGE_PY
 
 # description and url are set by the CI (labels input of the workflow); created,
 # revision and source are also set there, for each build
 LABEL org.opencontainers.image.title="MapProxy" \
       org.opencontainers.image.version="${MAPPROXY_VERSION}" \
       org.opencontainers.image.source="https://github.com/nds-cprm/mapproxy-oci" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.base.name="${GDAL_IMAGE_PY}"
 
 WORKDIR ${MAPPROXY_BASE_DIR}
 
