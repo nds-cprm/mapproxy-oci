@@ -24,10 +24,39 @@ RUN apt-get update && \
         gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
-# wheels of MapProxy and its dependencies (uwsgi and any other sdist are built
-# here, with the compilers); the release stage installs the same wheels
+# Packages compiled from their sdist against the libraries of the base image
+# instead of the PyPI wheels, which bundle their own copies (PROJ in pyproj,
+# GEOS in shapely): the same PROJ and GEOS as the libgdal of the image, which
+# get the fixes of the weekly rebuild of the base. Names only (comma-separated),
+# each pinned in requirements.txt. Pillow and lxml keep the PyPI wheels, with
+# their own copies of the libraries (see TODO.md).
+# pyproj looks for the proj executable, which the devel image does not have
+# (only the libproj-dev headers): PROJ_DIR and PROJ_VERSION, from pkg-config,
+# replace it.
+# Build dependencies (Cython, setuptools, numpy...) run in isolated
+# environments that -c does not reach: --build-constraint pins there the
+# packages the base image ships (numpy...) to its versions. LDFLAGS=-s strips
+# what is compiled here, as the base image does (the release image has no strip)
+ARG NO_BINARY=pyproj,shapely
+
+# wheels of MapProxy and its dependencies (uwsgi, the NO_BINARY packages and
+# any other sdist are built here, with the compilers); the release stage
+# installs the same wheels. The packages of the base image are constraints, so
+# no dependency replaces them
 RUN --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
-    pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
+    for name in $(echo "${NO_BINARY}" | tr ',' ' '); do \
+        if ! spec=$(grep -io "^${name}==[^ ]*" /tmp/requirements.txt); then \
+            echo "${name} (NO_BINARY) is not pinned in requirements.txt:" \
+                "fix the name or remove it from NO_BINARY" >&2; \
+            exit 1; \
+        fi; \
+        echo "building ${spec} from its sdist"; \
+    done && \
+    pip freeze --all > /tmp/base-constraints.txt && \
+    PROJ_DIR=/usr PROJ_VERSION=$(pkg-config --modversion proj) \
+    LDFLAGS=-s pip wheel --no-cache-dir --use-pep517 --wheel-dir /wheels \
+        --no-binary "${NO_BINARY}" \
+        -c /tmp/base-constraints.txt --build-constraint /tmp/base-constraints.txt \
         -r /tmp/requirements.txt -c /tmp/requirements.txt \
         "MapProxy==${MAPPROXY_VERSION}"
 
@@ -62,18 +91,26 @@ LABEL org.opencontainers.image.title="MapProxy" \
 WORKDIR ${MAPPROXY_BASE_DIR}
 
 # MapProxy and uWSGI are installed into the base image venv by its own pip,
-# from the wheels of the build stage and offline (--no-index). Copying the
-# build venv instead would mix two versions of a package whenever -devel and
-# the release image differ (e.g. one of them stale), with no build error.
-# pip check and the smoke test make a broken environment fail the build
+# from the wheels of the build stage and offline (--no-index), with the
+# packages of the base image as constraints, so no dependency replaces them.
+# Copying the build venv instead would mix two versions of a package whenever
+# -devel and the release image differ (e.g. one of them stale), with no build
+# error. pip check and the smoke test make a broken environment fail the build
 RUN --mount=type=bind,from=build,source=/wheels,target=/wheels \
     --mount=type=bind,source=requirements.txt,target=/tmp/requirements.txt \
+    pip freeze --all > /tmp/base-constraints.txt && \
     pip install --no-cache-dir --no-index --find-links /wheels \
+        -c /tmp/base-constraints.txt \
         -r /tmp/requirements.txt -c /tmp/requirements.txt \
         "MapProxy==${MAPPROXY_VERSION}" && \
+    rm /tmp/base-constraints.txt && \
     pip check && \
     python -c "import mapproxy.wsgiapp, shapely, pyproj, PIL, yaml, lxml, redis, requests" && \
     uwsgi --version
+
+# the compiled pyproj has no PROJ data of its own and, unlike the libproj used
+# by osgeo, does not look in /usr/share/proj (proj-data) by default
+ENV PROJ_DATA=/usr/share/proj
 
 COPY --from=build ${MAPPROXY_BASE_DIR} .
 

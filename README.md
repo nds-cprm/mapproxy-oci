@@ -220,6 +220,9 @@ docker build \
 | `GDAL_IMAGE_DEVEL` | `docker.io/ndscprm/gdal:3.12.4-py3.12-devel` (estágio de build) |
 | `GDAL_IMAGE_PY` | `docker.io/ndscprm/gdal:3.12.4-py3.12` (imagem final) |
 | `MAPPROXY_BASE_DIR` | `/var/lib/mapproxy` |
+| `NO_BINARY` | `pyproj,shapely` (pacotes compilados contra as bibliotecas da imagem base, em vez das wheels do PyPI) |
+
+O pyproj e o shapely são compilados no build contra o PROJ e o GEOS da imagem base, os mesmos da `libgdal`, em vez de usar as wheels do PyPI, que trazem cópias próprias deles. Assim, o MapProxy e o GDAL usam uma única versão de cada biblioteca, que recebe as correções do rebuild semanal da base. O Pillow e o lxml continuam com as wheels do PyPI.
 
 ### Atualizando a versão do MapProxy
 

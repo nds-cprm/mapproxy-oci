@@ -109,4 +109,41 @@ aborted=$(grep -c 'could not create one' "$errors") || :
 rm -f "$errors"
 [ "$aborted" -gt 0 ] || fail "no error message for a read-only HOME without configuration"
 
+# the NO_BINARY packages are compiled against the libraries of the base image: pyproj and shapely use the
+# PROJ and GEOS of its libgdal, and do not load the copies bundled in their PyPI wheels (pyproj.libs and
+# shapely.libs in site-packages). Pillow and lxml keep the PyPI wheels, with their own copies
+echo "## native libraries"
+"$DOCKER" run --rm -i --entrypoint python3 "$IMAGE" - << 'EOF' || fail "native libraries"
+import sys
+
+import pyproj
+import shapely
+from osgeo import ogr, osr
+
+versions = {
+    'PROJ (osgeo / pyproj)': (
+        '.'.join(str(v) for v in (osr.GetPROJVersionMajor(), osr.GetPROJVersionMinor(), osr.GetPROJVersionMicro())),
+        pyproj.proj_version_str,
+    ),
+    'GEOS (osgeo / shapely)': (
+        '.'.join(str(v) for v in (ogr.GetGEOSVersionMajor(), ogr.GetGEOSVersionMinor(), ogr.GetGEOSVersionMicro())),
+        shapely.geos_version_string,
+    ),
+}
+failed = False
+for name, (a, b) in versions.items():
+    print(f'{name}: {a} / {b}')
+    if a != b:
+        print(f'{name} differ', file=sys.stderr)
+        failed = True
+
+# every shared library mapped into this process, after importing the compiled modules
+loaded = sorted({line.split()[-1] for line in open('/proc/self/maps') if '.so' in line.split()[-1]})
+bundled = [path for path in loaded if '/pyproj.libs/' in path or '/shapely.libs/' in path]
+for path in bundled:
+    print(f'bundled library loaded: {path}', file=sys.stderr)
+    failed = True
+sys.exit(failed)
+EOF
+
 echo "OK"
