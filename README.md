@@ -233,7 +233,7 @@ A versão padrão fica no `ARG MAPPROXY_VERSION` do [`Dockerfile`](Dockerfile). 
 3. Rode o build localmente e confira se as dependências do `requirements.txt` continuam compatíveis.
 4. Faça o commit e dispare o workflow, ou aguarde o próximo build da imagem base, que dispara este.
 
-As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt). O workflow [`docker-image.yml`](.github/workflows/docker-image.yml) chama o [workflow reutilizável do gdal-oci](https://github.com/nds-cprm/gdal-oci#workflow-reutilizável), que constrói as imagens `amd64` e `arm64` em runners nativos, roda o teste de fumaça [`.github/scripts/smoke-test.sh`](.github/scripts/smoke-test.sh) em cada uma, analisa CVEs com o Docker Scout e o Grype e só então cria as tags. O teste também roda localmente: `sh .github/scripts/smoke-test.sh <imagem>` (com Podman: `DOCKER=podman sh .github/scripts/smoke-test.sh <imagem>`).
+As dependências Python ficam fixadas em [`requirements.txt`](requirements.txt). O workflow [`publish-image.yml`](.github/workflows/publish-image.yml) chama o [workflow reutilizável do gdal-oci](https://github.com/nds-cprm/gdal-oci#workflow-reutilizável), que constrói as imagens `amd64` e `arm64` em runners nativos, roda o teste de fumaça [`.github/scripts/smoke-test.sh`](.github/scripts/smoke-test.sh) em cada uma, analisa CVEs com o Docker Scout e o Grype e só então cria as tags. O teste também roda localmente: `sh .github/scripts/smoke-test.sh <imagem>` (com Podman: `DOCKER=podman sh .github/scripts/smoke-test.sh <imagem>`).
 
 ## Segurança e atualizações
 
