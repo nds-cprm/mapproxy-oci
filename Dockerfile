@@ -80,12 +80,17 @@ ARG MAPPROXY_VERSION
 # not say
 ARG GDAL_IMAGE_PY
 
-# description and url are set by the CI (labels input of the workflow); created,
-# revision and source are also set there, for each build
+# every key, or the labels of the ndscprm/gdal base would show through; created
+# and revision are set by the CI, for each build
 LABEL org.opencontainers.image.title="MapProxy" \
+      org.opencontainers.image.description="MapProxy servido pelo uWSGI, sobre GDAL e Python" \
       org.opencontainers.image.version="${MAPPROXY_VERSION}" \
-      org.opencontainers.image.source="https://github.com/nds-cprm/mapproxy-oci" \
+      org.opencontainers.image.vendor="SGB/CPRM" \
+      org.opencontainers.image.authors="Carlos Eduardo Mota <carlos.mota@sgb.gov.br>" \
       org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.url="https://hub.docker.com/r/ndscprm/mapproxy" \
+      org.opencontainers.image.documentation="https://github.com/nds-cprm/mapproxy-oci#readme" \
+      org.opencontainers.image.source="https://github.com/nds-cprm/mapproxy-oci" \
       org.opencontainers.image.base.name="${GDAL_IMAGE_PY}"
 
 WORKDIR ${MAPPROXY_BASE_DIR}

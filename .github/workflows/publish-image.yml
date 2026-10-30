@@ -76,10 +76,7 @@ jobs:
       build-args: |
         ${{ inputs.image_devel && format('GDAL_IMAGE_DEVEL={0}', inputs.image_devel) || '' }}
         ${{ inputs.image_py && format('GDAL_IMAGE_PY={0}', inputs.image_py) || '' }}
-      # title, version, source and licenses come from the Dockerfile
-      labels: |
-        org.opencontainers.image.description=Implementação de Imagem de Container OCI para o MapProxy
-        org.opencontainers.image.url=https://github.com/nds-cprm/mapproxy-oci
+      # the OCI labels come from the Dockerfile; created, revision and source from the reusable workflow
       variants: |
         [
           {"name": "release", "target": "release", "tag": "{version}", "scan": true,
